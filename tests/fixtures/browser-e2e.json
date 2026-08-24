@@ -1,7 +1,16 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "sourceId": "cf-browser-e2e",
   "pageType": "service-category",
+  "generatedAgainst": {
+    "profileId": "potolki-inner",
+    "profileVersion": "2.0.0",
+    "manifestHash": "sha256:a9e704060ec2847c6972687bbb62e4862ea9463b6823154e70ed30c726895a66"
+  },
+  "target": {
+    "siteKey": "potolkinaveka40",
+    "profileId": "potolki-inner"
+  },
   "post": {
     "title": "Content Factory Browser E2E",
     "slug": "cf-browser-e2e",

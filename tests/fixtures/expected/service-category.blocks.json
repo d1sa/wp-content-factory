@@ -1,0 +1,199 @@
+[
+    {
+        "blockName": "potolki/inner-hero",
+        "attrs": {
+            "kicker": "Каталог решений · Калуга и область",
+            "title": "Виды натяжных потолков",
+            "lead1": "Сравните фактуры и материалы для разных помещений.",
+            "lead2": "На замере покажем образцы и поможем выбрать подходящий вариант.",
+            "buttonLabel": "Получить консультацию",
+            "buttonUrl": "#request",
+            "buttonTarget": "",
+            "buttonRel": "",
+            "phoneCaption": "Консультация специалиста",
+            "phoneLabel": "+7 (920) 893-98-83",
+            "phoneUrl": "tel:+79208939883",
+            "benefit1": "Бесплатный замер",
+            "benefit2": "Образцы на объекте",
+            "benefit3": "Гарантия по договору",
+            "imageId": 0,
+            "imageUrl": "https://fixtures.example.test/theme/services-types.jpg",
+            "imageAlt": "Образцы разных видов натяжных потолков",
+            "badgeValue": "12+ лет",
+            "badgeText": "опыта монтажа",
+            "noteTitle": "Спроектируем целиком",
+            "noteText": "Полотно, профиль, свет и карнизы"
+        },
+        "innerBlocks": [],
+        "innerHTML": "",
+        "innerContent": []
+    },
+    {
+        "blockName": "potolki/inner-content",
+        "attrs": {
+            "readingTime": "1 мин. чтения",
+            "categoryLabel": "Услуги",
+            "tocLabel": "На странице"
+        },
+        "innerBlocks": [
+            {
+                "blockName": "potolki/inner-catalog",
+                "attrs": {
+                    "sectionId": "ceiling-types",
+                    "kicker": "Каталог",
+                    "title": "Выберите подходящую фактуру"
+                },
+                "innerBlocks": [
+                    {
+                        "blockName": "potolki/inner-catalog-card",
+                        "attrs": {
+                            "title": "Матовые потолки",
+                            "text": "Спокойная фактура без выраженных отражений.",
+                            "linkLabel": "Подробнее",
+                            "linkUrl": "/uslugi/vidy-potolkov/matovye/",
+                            "linkTarget": "",
+                            "linkRel": "",
+                            "imageId": 0,
+                            "imageUrl": "https://fixtures.example.test/theme/type-matte.jpg",
+                            "imageAlt": "Матовый потолок"
+                        },
+                        "innerBlocks": [],
+                        "innerHTML": "",
+                        "innerContent": []
+                    },
+                    {
+                        "blockName": "potolki/inner-catalog-card",
+                        "attrs": {
+                            "title": "Глянцевые потолки",
+                            "text": "Отражающая фактура для выразительного интерьера.",
+                            "linkLabel": "Подробнее",
+                            "linkUrl": "/uslugi/vidy-potolkov/glyantsevye/",
+                            "linkTarget": "",
+                            "linkRel": "",
+                            "imageId": 0,
+                            "imageUrl": "https://fixtures.example.test/theme/type-glossy.jpg",
+                            "imageAlt": "Глянцевый потолок"
+                        },
+                        "innerBlocks": [],
+                        "innerHTML": "",
+                        "innerContent": []
+                    },
+                    {
+                        "blockName": "potolki/inner-catalog-card",
+                        "attrs": {
+                            "title": "Сатиновые потолки",
+                            "text": "Мягкий блеск и деликатное рассеивание света.",
+                            "linkLabel": "Подробнее",
+                            "linkUrl": "/uslugi/vidy-potolkov/satinovye/",
+                            "linkTarget": "",
+                            "linkRel": "",
+                            "imageId": 0,
+                            "imageUrl": "https://fixtures.example.test/theme/type-satin.jpg",
+                            "imageAlt": "Сатиновый потолок"
+                        },
+                        "innerBlocks": [],
+                        "innerHTML": "",
+                        "innerContent": []
+                    }
+                ],
+                "innerHTML": "",
+                "innerContent": [
+                    "",
+                    null,
+                    null,
+                    null,
+                    ""
+                ]
+            },
+            {
+                "blockName": "potolki/inner-faq",
+                "attrs": {
+                    "sectionId": "faq",
+                    "kicker": "Ответы эксперта",
+                    "title": "Частые вопросы о выборе потолка"
+                },
+                "innerBlocks": [
+                    {
+                        "blockName": "potolki/inner-faq-item",
+                        "attrs": {
+                            "question": "Какая фактура практичнее?",
+                            "answer": "Практичность зависит от помещения, освещения и требований к уходу.",
+                            "isOpen": true
+                        },
+                        "innerBlocks": [],
+                        "innerHTML": "",
+                        "innerContent": []
+                    },
+                    {
+                        "blockName": "potolki/inner-faq-item",
+                        "attrs": {
+                            "question": "Можно ли увидеть образцы до заказа?",
+                            "answer": "Да, специалист привезёт образцы полотен на бесплатный замер.",
+                            "isOpen": false
+                        },
+                        "innerBlocks": [],
+                        "innerHTML": "",
+                        "innerContent": []
+                    },
+                    {
+                        "blockName": "potolki/inner-faq-item",
+                        "attrs": {
+                            "question": "Как сравнить итоговую стоимость?",
+                            "answer": "Сравнивайте полную комплектацию: полотно, профиль, углы, освещение и монтаж.",
+                            "isOpen": false
+                        },
+                        "innerBlocks": [],
+                        "innerHTML": "",
+                        "innerContent": []
+                    }
+                ],
+                "innerHTML": "",
+                "innerContent": [
+                    "",
+                    null,
+                    null,
+                    null,
+                    ""
+                ]
+            },
+            {
+                "blockName": "potolki/inner-cta",
+                "attrs": {
+                    "sectionId": "request",
+                    "variant": "links",
+                    "kicker": "Продолжите выбор",
+                    "title": "Посмотрите услуги и цены",
+                    "text": "Перейдите в нужный раздел или оставьте заявку на бесплатный замер.",
+                    "benefit1": "Замерщик бесплатно",
+                    "benefit2": "Смета до начала работ",
+                    "nameLabel": "Имя",
+                    "namePlaceholder": "Ваше имя",
+                    "phoneLabel": "Телефон",
+                    "phonePlaceholder": "+7 (___) ___-__-__",
+                    "buttonLabel": "Все услуги",
+                    "buttonUrl": "/uslugi/",
+                    "buttonTarget": "",
+                    "buttonRel": "",
+                    "secondaryLabel": "Посмотреть цены",
+                    "secondaryUrl": "/ceny/",
+                    "phoneCtaLabel": "или позвоните: +7 (920) 893-98-83",
+                    "phoneCtaUrl": "tel:+79208939883",
+                    "formNote": "Нажимая кнопку, вы соглашаетесь с политикой обработки данных.",
+                    "ymCounterId": "111217601",
+                    "ymGoal": "new_lid"
+                },
+                "innerBlocks": [],
+                "innerHTML": "",
+                "innerContent": []
+            }
+        ],
+        "innerHTML": "",
+        "innerContent": [
+            "",
+            null,
+            null,
+            null,
+            ""
+        ]
+    }
+]

@@ -4,8 +4,15 @@ namespace ContentFactory\Adapter;
 
 use ContentFactory\Contract\BlockNode;
 use ContentFactory\Contract\CompatibilityReport;
+use ContentFactory\Contract\ContractAuditor;
 use ContentFactory\Contract\ValidationIssue;
+use ContentFactory\Engine\DeclarativeSectionMapper;
+use ContentFactory\Engine\MapperDefinitionRegistry;
+use ContentFactory\Engine\TransformRegistry;
+use ContentFactory\Profile\CompiledProfile;
+use ContentFactory\Profile\ProfileCompiler;
 use ContentFactory\Resolve\LinkResolver;
+use ContentFactory\Validation\SemanticSchemaValidator;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -14,75 +21,44 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 
 	private array $manifest;
 	private LinkResolver $link_resolver;
+	private CompiledProfile $profile;
+	private SemanticSchemaValidator $semantic_validator;
 
-	public function __construct( ?LinkResolver $link_resolver = null, ?string $manifest_path = null ) {
+	public function __construct( ?LinkResolver $link_resolver = null ) {
 		$this->link_resolver = $link_resolver ?? new LinkResolver();
-		$manifest_path       = $manifest_path ?? dirname( __DIR__, 2 ) . '/adapters/potolki-inner/manifest.json';
-		$json                = is_readable( $manifest_path ) ? file_get_contents( $manifest_path ) : false;
-		if ( false === $json ) {
-			throw new \RuntimeException( 'Manifest адаптера potolki-inner недоступен.' );
-		}
-		try {
-			$manifest = json_decode( $json, true, 512, JSON_THROW_ON_ERROR );
-		} catch ( \JsonException $error ) {
-			throw new \RuntimeException( 'Manifest адаптера potolki-inner содержит некорректный JSON.', 0, $error );
-		}
-		if ( ! is_array( $manifest ) || self::PROFILE_ID !== ( $manifest['profileId'] ?? '' ) ) {
-			throw new \RuntimeException( 'Manifest адаптера potolki-inner имеет неверный profileId.' );
-		}
-		foreach ( array( 'manifestSchemaVersion', 'profileVersion', 'themeCompatibility', 'pageSpecVersions', 'postDefaults', 'pageTypes', 'sections', 'rootBlueprint', 'siteDefaults', 'assets', 'aliases', 'policies' ) as $required ) {
-			if ( ! array_key_exists( $required, $manifest ) ) {
-				throw new \RuntimeException( 'Manifest адаптера не содержит ' . $required . '.' );
-			}
-		}
-		if ( '1.0' !== $manifest['manifestSchemaVersion'] || ! preg_match( '/^\d+\.\d+\.\d+$/', (string) $manifest['profileVersion'] ) ) {
-			throw new \RuntimeException( 'Manifest адаптера имеет неподдерживаемую версию.' );
-		}
-		foreach ( $manifest['sections'] as $type => $definition ) {
-			if ( ! is_array( $definition ) || ! is_string( $definition['blockName'] ?? null ) || ! is_array( $definition['schema'] ?? null ) || 'object' !== ( $definition['schema']['type'] ?? null ) ) {
-				throw new \RuntimeException( 'Manifest адаптера имеет неполную schema секции ' . $type . '.' );
-			}
-		}
-		$this->manifest = $manifest;
+		$this->profile            = ( new ProfileCompiler() )->compile_file( dirname( __DIR__, 2 ) . '/adapters/potolki-inner/profile.json' );
+		$this->manifest           = $this->profile->configuration();
+		$this->semantic_validator = new SemanticSchemaValidator();
 	}
+
+	public function compiled_profile(): CompiledProfile { return $this->profile; }
 
 	public function id(): string {
 		return self::PROFILE_ID;
 	}
 
 	public function version(): string {
-		return (string) $this->manifest['profileVersion'];
+		return $this->profile->version();
 	}
 
 	public function supports_current_theme(): bool {
 		if ( ! function_exists( 'get_stylesheet' ) ) {
 			return false;
 		}
-		return in_array( get_stylesheet(), $this->manifest['themeCompatibility']['stylesheet'] ?? array(), true );
-	}
-
-	public function manifest(): array {
-		$manifest = $this->manifest;
-		if ( empty( $manifest['aliases'] ) ) {
-			$manifest['aliases'] = (object) array();
-		}
-		return $manifest;
+		return in_array( get_stylesheet(), $this->manifest['compatibility']['stylesheet'] ?? array(), true );
 	}
 
 	public function manifest_hash(): string {
-		$json = function_exists( 'wp_json_encode' )
-			? wp_json_encode( $this->manifest(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES )
-			: json_encode( $this->manifest(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
-		return 'sha256:' . hash( 'sha256', (string) $json );
+		return $this->profile->canonical_hash();
 	}
 
 	public function self_check(): CompatibilityReport {
 		$report = new CompatibilityReport();
 		if ( ! $this->supports_current_theme() ) {
-			$report->add( ValidationIssue::error( 'THEME_MISMATCH', '/theme', 'Активная тема несовместима с адаптером potolki-inner.', '', '', implode( ', ', $this->manifest['themeCompatibility']['stylesheet'] ?? array() ) ) );
+			$report->add( ValidationIssue::error( 'THEME_MISMATCH', '/theme', 'Активная тема несовместима с адаптером potolki-inner.', '', '', implode( ', ', $this->manifest['compatibility']['stylesheet'] ?? array() ) ) );
 		} elseif ( function_exists( 'wp_get_theme' ) ) {
 			$current = (string) wp_get_theme()->get( 'Version' );
-			$minimum = (string) ( $this->manifest['themeCompatibility']['minVersion'] ?? '0.0.0' );
+			$minimum = (string) ( $this->manifest['compatibility']['minVersion'] ?? '0.0.0' );
 			if ( '' !== $current && version_compare( $current, $minimum, '<' ) ) {
 				$report->add( ValidationIssue::error( 'THEME_VERSION', '/theme/version', 'Версия активной темы ниже минимальной.', '', '', '>=' . $minimum ) );
 			}
@@ -91,15 +67,38 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		$this->check_registry( array_keys( $this->registry_contracts() ), $report );
 		foreach ( array_keys( $this->manifest['assets'] ?? array() ) as $ref ) {
 			if ( ! $this->theme_asset_exists( (string) $ref, array() ) ) {
-				$report->add( ValidationIssue::error( 'MISSING_THEME_ASSET', '/assets/' . $this->pointer_escape( (string) $ref ), 'Файл themeAsset из manifest не найден.', '', '', (string) $ref ) );
+				$report->add( ValidationIssue::error( 'MISSING_THEME_ASSET', '/assets/' . $this->pointer_escape( (string) $ref ), 'Файл themeAsset из профиля не найден.', '', '', (string) $ref ) );
 			}
 		}
-		return $report->set_context( 'profileId', $this->id() )->set_context( 'profileVersion', $this->version() )->set_context( 'manifestHash', $this->manifest_hash() );
+		$template = (string) ( $this->manifest['postDefaults']['pageTemplate'] ?? '' );
+		if ( function_exists( 'wp_get_theme' ) ) {
+			$templates = wp_get_theme()->get_page_templates( null, 'page' );
+			if ( '' === $template || ( ! array_key_exists( $template, $templates ) && ! in_array( $template, $templates, true ) ) ) {
+				$report->add( ValidationIssue::error( 'PAGE_TEMPLATE_MISSING', '/postDefaults/pageTemplate', 'Шаблон страницы профиля отсутствует в активной теме.', '', '', $template ) );
+			}
+		}
+		if ( ! defined( 'WPSEO_VERSION' ) && ! class_exists( 'WPSEO_Options' ) ) {
+			$report->add( ValidationIssue::error( 'YOAST_UNAVAILABLE', '/requirements/yoast', 'Yoast SEO должен быть активирован для полного импорта.', '', '', 'active Yoast SEO' ) );
+		}
+		$field_consumers = array();
+		foreach ( $this->manifest['sections'] ?? array() as $type => $definition ) {
+			$field_consumers[ $type ] = $this->binding_consumers( (string) $type );
+		}
+		$report->merge( ( new ContractAuditor() )->audit( $this->manifest, array( 'fieldConsumers' => $field_consumers ) ) );
+		return $report
+			->set_context( 'profileId', $this->id() )
+			->set_context( 'profileVersion', $this->version() )
+			->set_context( 'siteDefaultsVersion', $this->profile->defaults_version() )
+			->set_context( 'manifestHash', $this->manifest_hash() );
 	}
 
 	public function validate( array $spec, array $context = array() ): CompatibilityReport {
 		$report    = new CompatibilityReport();
 		$source_id = is_string( $spec['sourceId'] ?? null ) ? $spec['sourceId'] : '';
+		$schema_version = is_string( $spec['schemaVersion'] ?? null ) ? $spec['schemaVersion'] : '';
+		if ( '1.1' !== $schema_version ) {
+			$report->add( ValidationIssue::error( 'UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', 'Версия PageSpec не поддерживается профилем.', $source_id, '', '1.1' ) );
+		}
 		$this->validate_target( $spec, $source_id, $report );
 		$this->validate_generated_against( $spec, $source_id, $report );
 
@@ -151,20 +150,19 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 				}
 			}
 			$this->validate_section( $type, $section, $path, $source_id, $link_context, $questions, $report, $context );
+			$report->merge( $this->semantic_validator->validate( $section['data'] ?? array(), $definition['schema'] ?? array(), $path . '/data', $source_id, $section_id ) );
 		}
 
 		if ( $sections && 'hero' !== ( $sections[0]['type'] ?? '' ) ) {
 			$report->add( ValidationIssue::error( 'SECTION_ORDER', '/sections/0/type', 'Hero должен быть первой semantic-секцией.', $source_id, '', 'hero' ) );
 		}
-		$last = count( $sections ) - 1;
-		if ( $last >= 0 && 'cta' !== ( $sections[ $last ]['type'] ?? '' ) ) {
-			$report->add( ValidationIssue::error( 'SECTION_ORDER', '/sections/' . $last . '/type', 'CTA должен быть последней semantic-секцией.', $source_id, '', 'cta' ) );
-		}
-
 		foreach ( $config['occurrences'] as $type => $range ) {
-			$count = $counts[ $type ] ?? 0;
-			if ( $count < (int) $range['min'] || $count > (int) $range['max'] ) {
-				$report->add( ValidationIssue::error( 'SECTION_COUNT', '/sections', sprintf( 'Недопустимое количество секций %s: %d.', $type, $count ), $source_id, '', $range['min'] . '..' . $range['max'] ) );
+			$count   = $counts[ $type ] ?? 0;
+			$minimum = (int) ( $range['min'] ?? 0 );
+			$maximum = array_key_exists( 'max', $range ) ? (int) $range['max'] : null;
+			if ( $count < $minimum || ( null !== $maximum && $count > $maximum ) ) {
+				$expected = null === $maximum ? $minimum . '+' : $minimum . '..' . $maximum;
+				$report->add( ValidationIssue::error( 'SECTION_COUNT', '/sections', sprintf( 'Недопустимое количество секций %s: %d.', $type, $count ), $source_id, '', $expected ) );
 			}
 		}
 
@@ -190,13 +188,17 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 			throw new \RuntimeException( 'Нельзя построить Block Tree: PageSpec несовместим с адаптером potolki-inner.' );
 		}
 
-		$link_context = $this->link_context( $spec, $context );
-		$sections     = $spec['sections'];
-		$hero         = $this->build_hero( $sections[0], $link_context, $context );
-		$children     = array();
-		$article_no   = 0;
-		$has_parent   = ! empty( $spec['post']['parent'] );
-		$manual_parent_link = false;
+		$link_context   = $this->link_context( $spec, $context );
+		$mapper_context = $link_context;
+		$mapper_context['spec'] = $spec;
+		$transforms         = new TransformRegistry( $this->link_resolver, $this->profile );
+		$sections           = $spec['sections'];
+		$hero               = $this->build_hero( $sections[0], $link_context, $context );
+		$children           = array();
+		$article_no         = 0;
+		$has_parent         = ! empty( $spec['post']['parent'] );
+		$manual_parent_link = (bool) array_filter( $sections, static fn( array $section ): bool => 'parent-link' === ( $section['type'] ?? '' ) );
+		$parent_link_added  = false;
 		foreach ( $sections as $section ) {
 			$type = $section['type'];
 			if ( 'hero' === $type ) {
@@ -205,19 +207,15 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 			if ( 'article' === $type ) {
 				++$article_no;
 				$children[] = $this->build_article( $section, $article_no, $link_context );
-			} elseif ( 'catalog' === $type ) {
-				$children[] = $this->build_catalog( $section, $link_context, $context );
-			} elseif ( 'steps' === $type ) {
-				$children[] = $this->build_steps( $section, $link_context );
-			} elseif ( 'faq' === $type ) {
-				$children[] = $this->build_faq( $section, $link_context );
+			} elseif ( in_array( $type, array( 'catalog', 'steps', 'faq' ), true ) ) {
+				$children[] = $this->build_generic_section( $section, $mapper_context, $transforms );
 			} elseif ( 'parent-link' === $type ) {
-				$manual_parent_link = true;
+				$parent_link_added = true;
 				$children[] = $this->build_parent_link( $section['data'], $spec['post']['parent'], $link_context );
 			} elseif ( 'cta' === $type ) {
-				if ( $has_parent && ! $manual_parent_link ) {
+				if ( $has_parent && ! $manual_parent_link && ! $parent_link_added ) {
 					$children[] = $this->build_parent_link( array(), $spec['post']['parent'], $link_context );
-					$manual_parent_link = true;
+					$parent_link_added = true;
 				}
 				$children[] = $this->build_cta( $section, $link_context );
 			}
@@ -236,13 +234,22 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		return array( $hero, $content );
 	}
 
+	private function build_generic_section( array $section, array $context, TransformRegistry $transforms ): BlockNode {
+		$type    = (string) ( $section['type'] ?? '' );
+		$binding = $this->profile->binding( $type );
+		if ( ! is_array( $binding ) || 'generic' !== ( $binding['mapper'] ?? '' ) ) {
+			throw new \RuntimeException( 'Для semantic-секции не найден generic binding: ' . $type );
+		}
+		return ( new DeclarativeSectionMapper( $binding, $transforms ) )->map( $section, $context );
+	}
+
 	private function validate_target( array $spec, string $source_id, CompatibilityReport $report ): void {
 		$target = $spec['target'] ?? null;
 		if ( ! is_array( $target ) ) {
 			return;
 		}
-		if ( isset( $target['siteKey'] ) && $this->manifest['siteKey'] !== $target['siteKey'] ) {
-			$report->add( ValidationIssue::error( 'TARGET_SITE_MISMATCH', '/target/siteKey', 'PageSpec предназначен для другого сайта.', $source_id, '', $this->manifest['siteKey'] ) );
+		if ( isset( $target['siteKey'] ) && $this->profile->site_key() !== $target['siteKey'] ) {
+			$report->add( ValidationIssue::error( 'TARGET_SITE_MISMATCH', '/target/siteKey', 'PageSpec предназначен для другого сайта.', $source_id, '', $this->profile->site_key() ) );
 		}
 		if ( isset( $target['profileId'] ) && $this->id() !== $target['profileId'] ) {
 			$report->add( ValidationIssue::error( 'TARGET_PROFILE_MISMATCH', '/target/profileId', 'PageSpec предназначен для другого адаптера.', $source_id, '', $this->id() ) );
@@ -257,7 +264,7 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		$expected = array( 'profileId' => $this->id(), 'profileVersion' => $this->version(), 'manifestHash' => $this->manifest_hash() );
 		foreach ( $expected as $key => $value ) {
 			if ( isset( $against[ $key ] ) && $value !== $against[ $key ] ) {
-				$report->add( ValidationIssue::warning( 'GENERATED_AGAINST_MISMATCH', '/generatedAgainst/' . $key, 'Advisory metadata отличается от активного manifest; фактический контракт проверен отдельно.', $source_id, '', $value ) );
+				$report->add( ValidationIssue::warning( 'GENERATED_AGAINST_MISMATCH', '/generatedAgainst/' . $key, 'Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.', $source_id, '', $value ) );
 			}
 		}
 	}
@@ -302,8 +309,8 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		$this->validate_required_string( $data, 'title', $path . '/data', $source_id, $section_id, $report );
 		$this->validate_optional_strings( $data, array( 'kicker' ), $path . '/data', $source_id, $section_id, $report );
 		$lead = $data['lead'] ?? null;
-		if ( ! $this->is_string_list( $lead, 1, 2 ) ) {
-			$report->add( ValidationIssue::error( 'INVALID_HERO_LEAD', $path . '/data/lead', 'lead должен содержать один или два непустых абзаца.', $source_id, $section_id, '1..2 strings' ) );
+		if ( ! $this->is_string_list( $lead, 1, PHP_INT_MAX ) ) {
+			$report->add( ValidationIssue::error( 'INVALID_HERO_LEAD', $path . '/data/lead', 'lead должен содержать хотя бы один непустой абзац.', $source_id, $section_id, '1+ strings' ) );
 		} else {
 			foreach ( $lead as $index => $text ) {
 				$this->validate_inline_text( $text, $path . '/data/lead/' . $index, $source_id, $section_id, $link_context, true, $report );
@@ -325,7 +332,7 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 			if ( '' === $fallback || ! $this->theme_asset_exists( $fallback, $context ) ) {
 				$report->add( ValidationIssue::error( 'MISSING_REQUIRED_ASSET', $path . '/data/image', 'Изображение hero отсутствует и fallback недоступен.', $source_id, $section_id ) );
 			} else {
-				$report->add( ValidationIssue::warning( 'ASSET_FALLBACK', $path . '/data/image', 'Для hero будет использовано fallback-изображение из manifest.', $source_id, $section_id, $fallback ) );
+				$report->add( ValidationIssue::warning( 'ASSET_FALLBACK', $path . '/data/image', 'Для hero будет использовано fallback-изображение из профиля.', $source_id, $section_id, $fallback ) );
 			}
 		}
 	}
@@ -421,9 +428,8 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		$this->validate_optional_strings( $data, array( 'kicker' ), $path . '/data', $source_id, $section_id, $report );
 		$items = $data['items'] ?? null;
 		$min   = (int) $this->manifest['policies']['stepsItems']['min'];
-		$max   = (int) $this->manifest['policies']['stepsItems']['max'];
-		if ( ! is_array( $items ) || ! array_is_list( $items ) || count( $items ) < $min || count( $items ) > $max ) {
-			$report->add( ValidationIssue::error( 'INVALID_STEPS_COUNT', $path . '/data/items', 'Количество этапов должно быть от 2 до 8.', $source_id, $section_id, $min . '..' . $max ) );
+		if ( ! is_array( $items ) || ! array_is_list( $items ) || count( $items ) < $min ) {
+			$report->add( ValidationIssue::error( 'INVALID_STEPS_COUNT', $path . '/data/items', 'Раздел этапов должен содержать хотя бы один элемент.', $source_id, $section_id, $min . '+' ) );
 			return;
 		}
 		foreach ( $items as $index => $item ) {
@@ -444,9 +450,8 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		$this->validate_optional_strings( $data, array( 'kicker' ), $path . '/data', $source_id, $section_id, $report );
 		$items = $data['items'] ?? null;
 		$min   = (int) $this->manifest['policies']['faqItems']['min'];
-		$max   = (int) $this->manifest['policies']['faqItems']['max'];
-		if ( ! is_array( $items ) || ! array_is_list( $items ) || count( $items ) < $min || count( $items ) > $max ) {
-			$report->add( ValidationIssue::error( 'INVALID_FAQ_COUNT', $path . '/data/items', 'Количество вопросов FAQ должно быть от 3 до 10.', $source_id, $section_id, $min . '..' . $max ) );
+		if ( ! is_array( $items ) || ! array_is_list( $items ) || count( $items ) < $min ) {
+			$report->add( ValidationIssue::error( 'INVALID_FAQ_COUNT', $path . '/data/items', 'Раздел FAQ должен содержать хотя бы один вопрос.', $source_id, $section_id, $min . '+' ) );
 			return;
 		}
 		foreach ( $items as $index => $item ) {
@@ -575,7 +580,7 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		if ( 'themeAsset' === $source ) {
 			$ref = is_string( $asset['ref'] ?? null ) ? $asset['ref'] : '';
 			if ( '' === $ref || ! isset( $this->manifest['assets'][ $ref ] ) ) {
-				$report->add( ValidationIssue::error( 'UNKNOWN_THEME_ASSET', $path . '/ref', 'themeAsset.ref отсутствует в manifest.', $source_id, $section_id ) );
+				$report->add( ValidationIssue::error( 'UNKNOWN_THEME_ASSET', $path . '/ref', 'themeAsset.ref отсутствует в профиле.', $source_id, $section_id ) );
 			} elseif ( ! $this->theme_asset_exists( $ref, $context ) ) {
 				$report->add( ValidationIssue::error( 'UNRESOLVED_ASSET', $path, 'Файл themeAsset недоступен.', $source_id, $section_id, $ref ) );
 			}
@@ -666,31 +671,42 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		$badge    = $data['badge'] ?? $defaults['hero']['badge'];
 		$note     = $data['note'] ?? $defaults['hero']['note'];
 		$lead     = $data['lead'];
+		$lead_children = array();
+		if ( count( $lead ) > 2 ) {
+			foreach ( $lead as $paragraph ) {
+				$lead_children[] = new BlockNode( 'core/paragraph', array(), array(), '<p>' . $this->inline_html( (string) $paragraph, $link_context ) . '</p>' );
+			}
+		}
+		$attributes = array(
+			'kicker'      => (string) ( $data['kicker'] ?? '' ),
+			'title'       => (string) $data['title'],
+			'lead1'       => $this->inline_html( (string) $lead[0], $link_context ),
+			'lead2'       => isset( $lead[1] ) ? $this->inline_html( (string) $lead[1], $link_context ) : '',
+			'buttonLabel' => (string) $data['primaryAction']['label'],
+			'buttonUrl'   => $link['url'],
+			'buttonTarget' => $link['target'],
+			'buttonRel'   => $link['rel'],
+			'phoneCaption' => (string) $defaults['phone']['caption'],
+			'phoneLabel'  => (string) $defaults['phone']['label'],
+			'phoneUrl'    => (string) $defaults['phone']['url'],
+			'benefit1'    => (string) ( $benefits[0] ?? '' ),
+			'benefit2'    => (string) ( $benefits[1] ?? '' ),
+			'benefit3'    => (string) ( $benefits[2] ?? '' ),
+			'imageId'     => (int) $image['id'],
+			'imageUrl'    => (string) $image['url'],
+			'imageAlt'    => (string) $image['alt'],
+			'badgeValue'  => (string) ( $badge['value'] ?? '' ),
+			'badgeText'   => (string) ( $badge['text'] ?? '' ),
+			'noteTitle'   => (string) ( $note['title'] ?? '' ),
+			'noteText'    => (string) ( $note['text'] ?? '' ),
+		);
+		if ( $lead_children ) {
+			$attributes['hasLeadBlocks'] = true;
+		}
 		return new BlockNode(
 			'potolki/inner-hero',
-			array(
-				'kicker'      => (string) ( $data['kicker'] ?? '' ),
-				'title'       => (string) $data['title'],
-				'lead1'       => $this->inline_html( (string) $lead[0], $link_context ),
-				'lead2'       => isset( $lead[1] ) ? $this->inline_html( (string) $lead[1], $link_context ) : '',
-				'buttonLabel' => (string) $data['primaryAction']['label'],
-				'buttonUrl'   => $link['url'],
-				'buttonTarget' => $link['target'],
-				'buttonRel'   => $link['rel'],
-				'phoneCaption' => (string) $defaults['phone']['caption'],
-				'phoneLabel'  => (string) $defaults['phone']['label'],
-				'phoneUrl'    => (string) $defaults['phone']['url'],
-				'benefit1'    => (string) ( $benefits[0] ?? '' ),
-				'benefit2'    => (string) ( $benefits[1] ?? '' ),
-				'benefit3'    => (string) ( $benefits[2] ?? '' ),
-				'imageId'     => (int) $image['id'],
-				'imageUrl'    => (string) $image['url'],
-				'imageAlt'    => (string) $image['alt'],
-				'badgeValue'  => (string) ( $badge['value'] ?? '' ),
-				'badgeText'   => (string) ( $badge['text'] ?? '' ),
-				'noteTitle'   => (string) ( $note['title'] ?? '' ),
-				'noteText'    => (string) ( $note['text'] ?? '' ),
-			)
+			$attributes,
+			$lead_children
 		);
 	}
 
@@ -741,48 +757,6 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 			$buttons[] = new BlockNode( 'core/button', array(), array(), $html );
 		}
 		return new BlockNode( 'core/buttons', array(), $buttons, '', '<div class="wp-block-buttons">', '</div>' );
-	}
-
-	private function build_catalog( array $section, array $link_context, array $context ): BlockNode {
-		$data     = $section['data'];
-		$children = array();
-		foreach ( $data['items'] as $item ) {
-			$link  = $this->resolve_link_or_throw( $item['action']['link'], $link_context );
-			$image = $this->resolve_asset_or_throw( $item['image'], $context );
-			$children[] = new BlockNode(
-				'potolki/inner-catalog-card',
-				array(
-					'title'      => $this->inline_html( (string) $item['title'], $link_context, false ),
-					'text'       => $this->inline_html( (string) $item['text'], $link_context, false ),
-					'linkLabel'  => (string) $item['action']['label'],
-					'linkUrl'    => (string) $link['url'],
-					'linkTarget' => (string) $link['target'],
-					'linkRel'    => (string) $link['rel'],
-					'imageId'    => (int) $image['id'],
-					'imageUrl'   => (string) $image['url'],
-					'imageAlt'   => (string) $image['alt'],
-				)
-			);
-		}
-		return new BlockNode( 'potolki/inner-catalog', array( 'sectionId' => (string) $section['id'], 'kicker' => (string) ( $data['kicker'] ?? 'Каталог' ), 'title' => (string) $data['title'] ), $children );
-	}
-
-	private function build_steps( array $section, array $link_context ): BlockNode {
-		$data     = $section['data'];
-		$children = array();
-		foreach ( $data['items'] as $index => $item ) {
-			$children[] = new BlockNode( 'potolki/inner-step', array( 'number' => (string) ( $index + 1 ), 'title' => (string) $item['title'], 'text' => $this->inline_html( (string) $item['text'], $link_context ) ) );
-		}
-		return new BlockNode( 'potolki/inner-steps', array( 'sectionId' => (string) $section['id'], 'kicker' => (string) ( $data['kicker'] ?? 'Процесс' ), 'title' => (string) $data['title'] ), $children );
-	}
-
-	private function build_faq( array $section, array $link_context ): BlockNode {
-		$data     = $section['data'];
-		$children = array();
-		foreach ( $data['items'] as $index => $item ) {
-			$children[] = new BlockNode( 'potolki/inner-faq-item', array( 'question' => (string) $item['question'], 'answer' => $this->inline_html( (string) $item['answer'], $link_context ), 'isOpen' => 0 === $index ) );
-		}
-		return new BlockNode( 'potolki/inner-faq', array( 'sectionId' => (string) $section['id'], 'kicker' => (string) ( $data['kicker'] ?? 'Ответы эксперта' ), 'title' => (string) $data['title'] ), $children );
 	}
 
 	private function build_parent_link( array $data, array $parent, array $link_context ): BlockNode {
@@ -957,7 +931,7 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 			$expected_parent = $contracts[ $block_name ]['parent'] ?? array();
 			$actual_parent   = is_array( $type->parent ?? null ) ? $type->parent : array();
 			if ( $expected_parent && array_values( $expected_parent ) !== array_values( $actual_parent ) ) {
-				$report->add( ValidationIssue::error( 'BLOCK_PARENT_CONFLICT', '/blocks/' . $this->pointer_escape( $block_name ) . '/parent', 'Parent declaration блока противоречит manifest.', '', '', implode( ', ', $expected_parent ) ) );
+				$report->add( ValidationIssue::error( 'BLOCK_PARENT_CONFLICT', '/blocks/' . $this->pointer_escape( $block_name ) . '/parent', 'Parent declaration блока противоречит профилю.', '', '', implode( ', ', $expected_parent ) ) );
 			}
 		}
 	}
@@ -1019,6 +993,34 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 			}
 		}
 		return true;
+	}
+
+	/** @return string[] */
+	private function binding_consumers( string $section_type ): array {
+		$binding = $this->profile->binding( $section_type );
+		if ( ! is_array( $binding ) ) {
+			return array();
+		}
+		$mapper = (string) ( $binding['mapper'] ?? 'generic' );
+		if ( 'generic' !== $mapper ) {
+			return ( new MapperDefinitionRegistry() )->consumer_fields( $mapper );
+		}
+		$fields = array();
+		$walk = function ( mixed $value ) use ( &$walk, &$fields ): void {
+			if ( ! is_array( $value ) ) {
+				return;
+			}
+			foreach ( array_merge( array( $value['source'] ?? null ), is_array( $value['sources'] ?? null ) ? $value['sources'] : array() ) as $source ) {
+				if ( is_string( $source ) && preg_match( '/^data\.([A-Za-z0-9_-]+)/', $source, $matches ) ) {
+					$fields[] = $matches[1];
+				}
+			}
+			foreach ( $value as $child ) {
+				$walk( $child );
+			}
+		};
+		$walk( $binding );
+		return array_values( array_unique( $fields ) );
 	}
 
 	private function reject_unknown( array $data, array $allowed, string $base, string $source_id, string $section_id, CompatibilityReport $report ): void {

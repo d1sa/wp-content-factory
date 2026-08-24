@@ -64,7 +64,6 @@ final class OperationLogger {
 			new_content_hash char(64) NOT NULL DEFAULT '',
 			compatibility_status varchar(32) NOT NULL DEFAULT '',
 			issues_json longtext NULL,
-			migrations_json longtext NULL,
 			defaults_json longtext NULL,
 			resolved_parent_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			resolved_path varchar(1000) NOT NULL DEFAULT '',
@@ -181,7 +180,6 @@ final class OperationLogger {
 			'new_content_hash'      => $this->clean_hash( (string) ( $entry['new_content_hash'] ?? '' ) ),
 			'compatibility_status'  => $this->clean_key( (string) ( $entry['compatibility_status'] ?? '' ), 32 ),
 			'issues_json'           => $this->encode_json( $entry['issues'] ?? array() ),
-			'migrations_json'       => $this->encode_json( $entry['migrations'] ?? array() ),
 			'defaults_json'         => $this->encode_json( $entry['defaults_applied'] ?? $entry['defaults'] ?? array() ),
 			'resolved_parent_id'    => absint( $entry['resolved_parent_id'] ?? 0 ),
 			'resolved_path'         => $this->clean_text( (string) ( $entry['resolved_path'] ?? '' ), 1000 ),
@@ -226,7 +224,7 @@ final class OperationLogger {
 
 		$pages = $this->database->get_results(
 			$this->database->prepare(
-				"SELECT * FROM {$this->pages_table} WHERE operation_id = %s ORDER BY id ASC",
+				"SELECT id, operation_id, source_id, post_id, action, result, old_source_hash, new_source_hash, old_content_hash, new_content_hash, compatibility_status, issues_json, defaults_json, resolved_parent_id, resolved_path, yoast_result_json, rollback_result_json, created_at, updated_at, published_at, logged_at FROM {$this->pages_table} WHERE operation_id = %s ORDER BY id ASC",
 				$operation_id
 			),
 			ARRAY_A
@@ -357,7 +355,6 @@ final class OperationLogger {
 		$row['resolved_parent_id'] = (int) $row['resolved_parent_id'];
 		$json_fields               = array(
 			'issues_json'          => 'issues',
-			'migrations_json'      => 'migrations',
 			'defaults_json'        => 'defaults_applied',
 			'yoast_result_json'    => 'yoast_result',
 			'rollback_result_json' => 'rollback_result',
@@ -366,7 +363,6 @@ final class OperationLogger {
 			$row[ $public ] = $this->decode_json( $row[ $stored ] ?? null );
 			unset( $row[ $stored ] );
 		}
-
 		return $row;
 	}
 

@@ -5,32 +5,75 @@ namespace ContentFactory\Service;
 use ContentFactory\Adapter\AdapterRegistry;
 use ContentFactory\Build\GutenbergSerializer;
 use ContentFactory\Contract\CompatibilityReport;
+use ContentFactory\Contract\BuildPlan;
+use ContentFactory\Contract\PipelineResult;
 use ContentFactory\Contract\ValidationIssue;
+use ContentFactory\Adapter\ThemeAdapterInterface;
+use ContentFactory\Profile\CompiledProfile;
+use ContentFactory\Profile\ProfileSelector;
+use ContentFactory\Profile\SelfCheckCache;
 use ContentFactory\Resolve\HierarchyResolver;
 use ContentFactory\Validation\CorePageSpecValidator;
 
 defined( 'ABSPATH' ) || exit;
 
 final class ContentPipeline {
+	private ProfileSelector $selector;
+	private SelfCheckCache $self_checks;
+	/** @var array<int,CompiledProfile> */
+	private array $profiles = array();
+
 	public function __construct(
 		private AdapterRegistry $adapters,
 		private CorePageSpecValidator $core,
 		private HierarchyResolver $hierarchy,
-		private GutenbergSerializer $serializer
-	) {}
+		private GutenbergSerializer $serializer,
+		?ProfileSelector $selector = null,
+		?SelfCheckCache $self_checks = null
+	) {
+		$this->selector    = $selector ?? new ProfileSelector( $adapters );
+		$this->self_checks = $self_checks ?? new SelfCheckCache();
+	}
 
 	public function process( array $spec, array $context = array() ): CompatibilityReport {
-		$adapter = $this->adapters->active();
-		if ( ! $adapter ) {
-			return ( new CompatibilityReport() )->add( ValidationIssue::error( 'NO_ACTIVE_ADAPTER', '/', 'Для активной темы не найден адаптер.', $spec['sourceId'] ?? '', '', 'registered compatible adapter' ) );
+		return $this->process_result( $spec, $context )->report();
+	}
+
+	public function process_result( array $spec, array $context = array() ): PipelineResult {
+		$selected = $this->selector->select( $spec );
+		if ( is_wp_error( $selected ) ) {
+			$code = array( 'ambiguous_profile'=>'AMBIGUOUS_PROFILE', 'target_profile_unavailable'=>'TARGET_PROFILE_UNAVAILABLE' )[ $selected->get_error_code() ] ?? 'NO_ACTIVE_ADAPTER';
+			$report = ( new CompatibilityReport() )->add( ValidationIssue::error( $code, '/target', $selected->get_error_message(), (string) ( $spec['sourceId'] ?? '' ), '', 'one exact compatible profile' ) );
+			return new PipelineResult( $report, $spec );
 		}
-		[ $spec, $migrations ] = $this->apply_aliases( $spec, $adapter->manifest()['aliases'] ?? array() );
-		$report = $this->core->validate( $spec );
-		$report->set_context( 'migrations', $migrations );
-		$report->set_context( 'defaultsApplied', $this->collect_defaults( $spec, $adapter->manifest() ) );
-		foreach ( $migrations as $migration ) {
-			$report->add( ValidationIssue::info( 'ALIAS_APPLIED', $migration['from'], 'Применён однозначный alias из manifest.', $spec['sourceId'] ?? '', '', $migration['to'] ) );
+		$profile = $this->profile_for( $selected );
+		$gate = new CompatibilityReport();
+		$self_check = $this->self_checks->get( $selected );
+		$gate->merge( $self_check );
+		if ( $self_check->has_errors() ) {
+			$gate->add( ValidationIssue::error( 'PROFILE_SELF_CHECK_FAILED', '/profile', 'Self-check активного профиля содержит blocking errors.', (string) ( $spec['sourceId'] ?? '' ), '', $profile->id() ) );
+			return new PipelineResult( report: $gate, normalized_spec: $spec, profile: $profile );
 		}
+		$report = $this->process_with_adapter( $spec, $context, $selected, $profile, $gate );
+		$ctx = $report->context();
+		$plan = isset( $ctx['plannedBlockTree'], $ctx['postContent'] ) && is_array( $ctx['plannedBlockTree'] )
+			? new BuildPlan( $ctx['plannedBlockTree'], (string) $ctx['postContent'] )
+			: null;
+		return new PipelineResult(
+			$report,
+			is_array( $ctx['normalizedSpec'] ?? null ) ? $ctx['normalizedSpec'] : $spec,
+			is_array( $ctx['resolved'] ?? null ) ? $ctx['resolved'] : array(),
+			$plan,
+			is_array( $ctx['defaultsApplied'] ?? null ) ? $ctx['defaultsApplied'] : array(),
+			is_array( $ctx['conflict'] ?? null ) ? $ctx['conflict'] : null,
+			$profile
+		);
+	}
+
+	private function process_with_adapter( array $spec, array $context, ThemeAdapterInterface $adapter, CompiledProfile $profile, CompatibilityReport $report ): CompatibilityReport {
+		$manifest = $profile->configuration();
+		$report->merge( $this->core->validate( $spec ) );
+		$report->set_context( 'defaultsApplied', $this->collect_defaults( $spec, $manifest ) );
 		if ( $report->has_errors() ) {
 			return $report;
 		}
@@ -51,7 +94,7 @@ final class ContentPipeline {
 		$context['parent_id']     = $parent_id;
 		$context['expected_path'] = $expected_path;
 		$context['anchors']       = array_values( array_filter( array_map( static fn( array $section ): string => (string) ( $section['id'] ?? '' ), $spec['sections'] ?? array() ) ) );
-		$this->validate_wordpress_conflicts( $spec, $adapter->manifest(), $expected_path, $parent_id, $report );
+		$this->validate_wordpress_conflicts( $spec, $manifest, $expected_path, $parent_id, $report );
 		if ( isset( $spec['seo']['canonical'] ) && is_string( $spec['seo']['canonical'] ) ) {
 			$expected_canonical = home_url( $expected_path );
 			if ( $this->normalize_url( $spec['seo']['canonical'] ) !== $this->normalize_url( $expected_canonical ) ) {
@@ -82,6 +125,14 @@ final class ContentPipeline {
 		}
 		$report->set_context( 'normalizedSpec', $spec );
 		return $report;
+	}
+
+	private function profile_for( ThemeAdapterInterface $adapter ): CompiledProfile {
+		$key = spl_object_id( $adapter );
+		if ( ! isset( $this->profiles[ $key ] ) ) {
+			$this->profiles[ $key ] = $adapter->compiled_profile();
+		}
+		return $this->profiles[ $key ];
 	}
 
 	private function test_render( string $content ): true|\WP_Error {
@@ -115,39 +166,6 @@ final class ContentPipeline {
 		return $scheme . '://' . $user . $host . $port . $path . $query . $fragment;
 	}
 
-	private function apply_aliases( array $spec, mixed $aliases ): array {
-		if ( ! is_array( $aliases ) ) {
-			return array( $spec, array() );
-		}
-		$migrations = array();
-		foreach ( $aliases as $from => $to ) {
-			if ( ! is_string( $from ) || ! is_string( $to ) ) {
-				continue;
-			}
-			$from_parts = explode( '.', $from );
-			$to_parts   = explode( '.', $to );
-			if ( count( $from_parts ) < 2 || count( $to_parts ) < 2 || $from_parts[0] !== $to_parts[0] ) {
-				continue;
-			}
-			if ( ! isset( $spec['sections'] ) || ! is_array( $spec['sections'] ) ) {
-				continue;
-			}
-			foreach ( $spec['sections'] as &$section ) {
-				if ( ! is_array( $section ) || ( $section['type'] ?? '' ) !== $from_parts[0] ) {
-					continue;
-				}
-				if ( ! is_array( $section['data'] ?? null ) || array_is_list( $section['data'] ) ) {
-					continue;
-				}
-				if ( $this->move_alias_value( $section['data'], array_slice( $from_parts, 1 ), array_slice( $to_parts, 1 ) ) ) {
-					$migrations[] = array( 'from' => $from, 'to' => $to, 'sectionId' => $section['id'] ?? '' );
-				}
-			}
-			unset( $section );
-		}
-		return array( $spec, $migrations );
-	}
-
 	private function collect_defaults( array $spec, array $manifest ): array {
 		$defaults = array();
 		if ( ! array_key_exists( 'categoryLabel', $spec['post'] ?? array() ) ) {
@@ -169,31 +187,6 @@ final class ContentPipeline {
 			}
 		}
 		return $defaults;
-	}
-
-	private function move_alias_value( array &$data, array $from, array $to ): bool {
-		if ( 1 === count( $from ) && 1 === count( $to ) && array_key_exists( $from[0], $data ) && ! array_key_exists( $to[0], $data ) ) {
-			$data[ $to[0] ] = $data[ $from[0] ];
-			unset( $data[ $from[0] ] );
-			return true;
-		}
-		if ( 2 === count( $from ) && 2 === count( $to ) && str_ends_with( $from[0], '[]' ) && $from[0] === $to[0] ) {
-			$key = substr( $from[0], 0, -2 );
-			if ( ! is_array( $data[ $key ] ?? null ) || ! array_is_list( $data[ $key ] ) ) {
-				return false;
-			}
-			$moved = false;
-			foreach ( $data[ $key ] as &$item ) {
-				if ( is_array( $item ) && array_key_exists( $from[1], $item ) && ! array_key_exists( $to[1], $item ) ) {
-					$item[ $to[1] ] = $item[ $from[1] ];
-					unset( $item[ $from[1] ] );
-					$moved = true;
-				}
-			}
-			unset( $item );
-			return $moved;
-		}
-		return false;
 	}
 
 	private function expected_path( array $spec, int $parent_id ): string {

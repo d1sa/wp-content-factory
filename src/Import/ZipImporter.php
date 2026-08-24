@@ -5,7 +5,6 @@ namespace ContentFactory\Import;
 defined( 'ABSPATH' ) || exit;
 
 final class ZipImporter {
-	public const MAX_FILES             = 100;
 	public const MAX_UNCOMPRESSED_SIZE = 20971520;
 
 	public function __construct( private ?JsonImporter $json_importer = null ) {
@@ -128,7 +127,6 @@ final class ZipImporter {
 	 */
 	private function inspect( \ZipArchive $zip, string $file_path ): array|\WP_Error {
 		$entries            = array();
-		$file_count         = 0;
 		$uncompressed_total = 0;
 
 		for ( $index = 0; $index < $zip->numFiles; $index++ ) {
@@ -164,21 +162,6 @@ final class ZipImporter {
 
 			if ( $is_directory ) {
 				continue;
-			}
-
-			$file_count++;
-			if ( $file_count > self::MAX_FILES ) {
-				return $this->error(
-					'content_factory_zip_too_many_files',
-					sprintf(
-						/* translators: %d: maximum number of archive files. */
-						__( 'The ZIP archive contains more than %d files.', 'content-factory' ),
-						self::MAX_FILES
-					),
-					413,
-					$file_path,
-					array( 'maxFiles' => self::MAX_FILES )
-				);
 			}
 
 			$entry_size = (int) $stat['size'];

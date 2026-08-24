@@ -4,6 +4,8 @@ namespace ContentFactory\WordPress;
 
 use ContentFactory\Adapter\AdapterRegistry;
 use ContentFactory\Log\OperationLogger;
+use ContentFactory\Profile\CompiledProfile;
+use ContentFactory\Profile\ProfileSelector;
 use ContentFactory\Service\ContentPipeline;
 
 defined( 'ABSPATH' ) || exit;
@@ -11,7 +13,7 @@ defined( 'ABSPATH' ) || exit;
 final class DraftManager {
 	private const META_KEYS = array(
 		'_content_factory_source_id', '_content_factory_schema_version', '_content_factory_profile_id',
-		'_content_factory_profile_version', '_content_factory_manifest_hash', '_content_factory_source_hash',
+		'_content_factory_profile_version', '_content_factory_site_defaults_version', '_content_factory_manifest_hash', '_content_factory_source_hash',
 		'_content_factory_content_hash', '_content_factory_validation_hash', '_content_factory_validation_status',
 		'_content_factory_generated_at', '_content_factory_validated_at', '_content_factory_import_user_id',
 		'_content_factory_source_spec', '_content_factory_warning_count', '_yoast_wpseo_title', '_yoast_wpseo_metadesc',
@@ -43,7 +45,8 @@ final class DraftManager {
 		if ( ! $this->yoast->available() ) {
 			return new \WP_Error( 'yoast_unavailable', 'Yoast SEO должен быть активирован перед импортом.', array( 'status' => 409 ) );
 		}
-		$report = $this->pipeline->process( $spec, $context );
+		$pipeline_result = $this->pipeline->process_result( $spec, $context );
+		$report = $pipeline_result->report();
 		if ( $report->has_errors() ) {
 			$conflict = $report->context()['conflict'] ?? null;
 			if ( is_array( $conflict ) ) {
@@ -51,24 +54,27 @@ final class DraftManager {
 			}
 			return new \WP_Error( 'incompatible_pagespec', 'PageSpec несовместим.', array( 'status' => 422, 'report' => $report ) );
 		}
-		$spec    = $report->context()['normalizedSpec'] ?? $spec;
-		$adapter = $this->adapters->active();
+		$spec    = $pipeline_result->normalized_spec();
+		$profile = $pipeline_result->profile();
+		if ( ! $profile || ! $pipeline_result->build_plan() ) {
+			return new \WP_Error( 'profile_unavailable', 'Точный compiled profile или BuildPlan недоступен.', array( 'status' => 409, 'report' => $report ) );
+		}
 		$ctx     = $report->context();
-		$content = (string) ( $ctx['postContent'] ?? '' );
-		$parent  = (int) ( $ctx['resolved']['parentId'] ?? 0 );
-		$source_hash = $this->hashes->source_hash( $spec );
-		$existing = $this->find_by_source_id( $spec['sourceId'] );
+		$content = $pipeline_result->build_plan()->post_content();
+		$parent  = (int) ( $pipeline_result->resolved()['parentId'] ?? 0 );
+		$plan = $this->plan( $spec, $ctx, $profile );
+		$source_hash = (string) ( $plan['sourceHash'] ?? $this->hashes->source_hash( $spec ) );
+		$existing = ! empty( $plan['postId'] ) ? get_post( (int) $plan['postId'] ) : null;
 		$old_source_hash  = $existing ? (string) get_post_meta( $existing->ID, '_content_factory_source_hash', true ) : '';
 		$old_content_hash = $existing ? (string) get_post_meta( $existing->ID, '_content_factory_content_hash', true ) : '';
-		if ( $existing && 'publish' === $existing->post_status ) {
+		if ( 'blocked_published' === ( $plan['action'] ?? '' ) ) {
 			return new \WP_Error( 'published_conflict', 'Опубликованная managed page не может быть перезаписана.', array( 'status' => 409, 'postId' => $existing->ID, 'editLink' => get_edit_post_link( $existing->ID, 'raw' ) ) );
 		}
-		if ( $existing && $source_hash === get_post_meta( $existing->ID, '_content_factory_source_hash', true ) && $this->matches_validated_source( $existing, $spec, $ctx, $adapter ) ) {
-			return $this->result( 'no_change', $existing->ID, $report, array( 'old_source_hash' => $old_source_hash, 'new_source_hash' => $source_hash, 'old_content_hash' => $old_content_hash, 'new_content_hash' => $old_content_hash ) );
+		if ( 'conflict' === ( $plan['action'] ?? '' ) ) {
+			return new \WP_Error( 'import_conflict', 'WordPress page конфликтует с импортом.', array( 'status' => 409, 'postId' => (int) ( $plan['postId'] ?? 0 ), 'editLink' => $plan['editLink'] ?? '', 'reason' => $plan['reason'] ?? '' ) );
 		}
-		$conflict = get_page_by_path( trim( $ctx['resolved']['expectedPath'] ?? '', '/' ), OBJECT, 'page' );
-		if ( $conflict && ( ! $existing || (int) $existing->ID !== (int) $conflict->ID ) ) {
-			return new \WP_Error( 'path_conflict', 'Итоговый hierarchical path уже занят.', array( 'status' => 409, 'postId' => $conflict->ID, 'editLink' => get_edit_post_link( $conflict->ID, 'raw' ) ) );
+		if ( 'no_change' === ( $plan['action'] ?? '' ) && $existing ) {
+			return $this->result( 'no_change', $existing->ID, $report, array( 'old_source_hash' => $old_source_hash, 'new_source_hash' => $source_hash, 'old_content_hash' => $old_content_hash, 'new_content_hash' => $old_content_hash ) );
 		}
 
 		$post_data = array(
@@ -78,7 +84,7 @@ final class DraftManager {
 			'post_name'    => sanitize_title( $spec['post']['slug'] ),
 			'post_parent'  => $parent,
 			'post_content' => $content,
-			'page_template'=> $adapter->manifest()['postDefaults']['pageTemplate'],
+			'page_template'=> (string) ( $profile->post_defaults()['pageTemplate'] ?? '' ),
 		);
 		$snapshot = $existing ? $this->snapshot( $existing->ID ) : null;
 		if ( $existing ) {
@@ -108,17 +114,18 @@ final class DraftManager {
 				array(
 					'title' => $post_data['post_title'], 'slug' => $post_data['post_name'], 'parentId' => $parent,
 					'template' => $post_data['page_template'], 'content' => $content, 'seoTitle' => $spec['seo']['title'],
-					'seoDescription' => $spec['seo']['description'], 'profileId' => $adapter->id(),
-					'profileVersion' => $adapter->version(), 'siteDefaultsVersion' => $adapter->manifest()['siteDefaultsVersion'] ?? '1',
+					'seoDescription' => $spec['seo']['description'], 'profileId' => $profile->id(),
+					'profileVersion' => $profile->version(), 'siteDefaultsVersion' => $profile->defaults_version(),
 				)
 			);
 			$now = gmdate( 'c' );
 			$meta = array(
 				'_content_factory_source_id' => $spec['sourceId'],
 				'_content_factory_schema_version' => $spec['schemaVersion'],
-				'_content_factory_profile_id' => $adapter->id(),
-				'_content_factory_profile_version' => $adapter->version(),
-				'_content_factory_manifest_hash' => $adapter->manifest_hash(),
+				'_content_factory_profile_id' => $profile->id(),
+				'_content_factory_profile_version' => $profile->version(),
+				'_content_factory_site_defaults_version' => $profile->defaults_version(),
+				'_content_factory_manifest_hash' => $profile->canonical_hash(),
 				'_content_factory_source_hash' => $source_hash,
 				'_content_factory_content_hash' => $content_hash,
 				'_content_factory_validation_hash' => $validation_hash,
@@ -160,8 +167,19 @@ final class DraftManager {
 	}
 
 	public function find_by_source_id( string $source_id ): ?\WP_Post {
-		$posts = get_posts( array( 'post_type' => 'page', 'post_status' => array( 'draft', 'publish', 'pending', 'private' ), 'meta_key' => '_content_factory_source_id', 'meta_value' => $source_id, 'posts_per_page' => 1 ) );
-		return $posts[0] ?? null;
+		return ( new ImportPlanner( $this->hashes ) )->find_by_source_id( $source_id );
+	}
+
+	/** @return array<string,mixed> */
+	public function plan( array $spec, array $context, ?CompiledProfile $profile = null ): array {
+		if ( null === $profile ) {
+			$selected = ( new ProfileSelector( $this->adapters ) )->select( $spec );
+			$profile = is_wp_error( $selected ) ? null : $selected->compiled_profile();
+		}
+		if ( null === $profile ) {
+			return array( 'action' => 'conflict', 'postId' => 0, 'sourceHash' => $this->hashes->source_hash( $spec ), 'reason' => 'profile_unavailable' );
+		}
+		return ( new ImportPlanner( $this->hashes ) )->plan( $spec, $context, $profile );
 	}
 
 	public function capture_state( string $source_id ): ?array {
@@ -187,7 +205,7 @@ final class DraftManager {
 	}
 
 	private function result( string $action, int $post_id, $report, array $audit = array() ): array {
-		return array_merge( array( 'action' => $action, 'sourceId' => get_post_meta( $post_id, '_content_factory_source_id', true ), 'postId' => $post_id, 'status' => get_post_status( $post_id ), 'editLink' => get_edit_post_link( $post_id, 'raw' ), 'previewLink' => get_preview_post_link( $post_id ), 'report' => $report, 'issues' => $report->issues(), 'migrations' => $report->context()['migrations'] ?? array(), 'defaults_applied' => $report->context()['defaultsApplied'] ?? array() ), $audit );
+		return array_merge( array( 'action' => $action, 'sourceId' => get_post_meta( $post_id, '_content_factory_source_id', true ), 'postId' => $post_id, 'status' => get_post_status( $post_id ), 'editLink' => get_edit_post_link( $post_id, 'raw' ), 'previewLink' => get_preview_post_link( $post_id ), 'report' => $report, 'issues' => $report->issues(), 'defaults_applied' => $report->context()['defaultsApplied'] ?? array() ), $audit );
 	}
 
 	private function snapshot( int $post_id ): array {
@@ -262,18 +280,4 @@ final class DraftManager {
 		return null === get_post( $candidate->ID );
 	}
 
-	private function matches_validated_source( \WP_Post $post, array $spec, array $context, $adapter ): bool {
-		$planned_content = (string) ( $context['postContent'] ?? '' );
-		$parent_id = (int) ( $context['resolved']['parentId'] ?? 0 );
-		$template = (string) ( $adapter->manifest()['postDefaults']['pageTemplate'] ?? '' );
-		return 'valid' === get_post_meta( $post->ID, '_content_factory_validation_status', true )
-			&& $planned_content === $post->post_content
-			&& sanitize_text_field( $spec['post']['title'] ) === $post->post_title
-			&& sanitize_title( $spec['post']['slug'] ) === $post->post_name
-			&& $parent_id === (int) $post->post_parent
-			&& $template === get_page_template_slug( $post->ID )
-			&& sanitize_text_field( $spec['seo']['title'] ) === get_post_meta( $post->ID, '_yoast_wpseo_title', true )
-			&& sanitize_textarea_field( $spec['seo']['description'] ) === get_post_meta( $post->ID, '_yoast_wpseo_metadesc', true )
-			&& $this->hashes->content_hash( $post->post_content ) === get_post_meta( $post->ID, '_content_factory_content_hash', true );
-	}
 }

@@ -27,11 +27,60 @@ final class BatchRunner {
 		}
 		$paths = $this->planned_paths( $sorted );
 		$urls  = array_map( static fn( string $path ): string => home_url( $path ), $paths );
-		$ids   = array_fill_keys( array_keys( $paths ), 0 );
+		$ids   = array();
+		foreach ( array_keys( $paths ) as $source_id ) {
+			$existing = $this->drafts->find_by_source_id( (string) $source_id );
+			$ids[ $source_id ] = $existing ? (int) $existing->ID : 0;
+		}
 		$results = array();
 		foreach ( $specs as $index => $spec ) {
-			$report = $this->pipeline->process( $spec, array( 'batch_ids' => $ids, 'batch_paths' => $paths, 'source_urls' => $urls ) );
-			$results[] = array( 'index' => $index, 'sourceId' => $spec['sourceId'] ?? '', 'title' => $spec['post']['title'] ?? '', 'spec' => $spec, 'report' => $report );
+			$pipeline_result = $this->pipeline->process_result( $spec, array( 'batch_ids' => $ids, 'batch_paths' => $paths, 'source_urls' => $urls ) );
+			$report = $pipeline_result->report();
+			$normalized = $pipeline_result->normalized_spec();
+			$profile = $pipeline_result->profile();
+			$plan = $report->has_errors()
+				? $this->blocked_plan( $report )
+				: $this->drafts->plan( $normalized, $report->context(), $profile );
+			if ( ! $report->has_errors() && in_array( $plan['action'] ?? '', array( 'blocked_published', 'conflict' ), true ) ) {
+				$published = 'blocked_published' === ( $plan['action'] ?? '' );
+				$report->add(
+					ValidationIssue::error(
+						$published ? 'PUBLISHED_MANAGED_PAGE' : 'IMPORT_PLAN_CONFLICT',
+						'/sourceId',
+						$published ? 'Опубликованная управляемая страница не может быть перезаписана.' : 'Страница конфликтует с существующим содержимым WordPress.',
+						$spec['sourceId'] ?? '',
+						(string) ( $plan['reason'] ?? '' ),
+						$published ? 'unpublished managed draft' : 'unique sourceId and path',
+						$published ? 'Создайте новый sourceId или измените страницу вручную.' : 'Устраните дубликат sourceId или занятый путь.'
+					)
+				);
+			}
+			$results[] = array(
+				'index'         => $index,
+				'sourceId'      => $spec['sourceId'] ?? '',
+				'title'         => $spec['post']['title'] ?? '',
+				'spec'          => $spec,
+				'report'        => $report,
+				'plannedAction' => $plan['action'] ?? 'conflict',
+				'plan'          => $plan,
+				'profile'       => $profile,
+			);
+		}
+
+		$profile_targets = array();
+		foreach ( $results as $result ) {
+			$profile = $result['profile'] ?? null;
+			if ( $profile instanceof \ContentFactory\Profile\CompiledProfile ) {
+				$profile_targets[ $profile->site_key() . '|' . $profile->id() ] = true;
+			}
+		}
+		if ( 1 < count( $profile_targets ) ) {
+			foreach ( $results as &$result ) {
+				$result['report']->add( ValidationIssue::error( 'MIXED_TARGET_BATCH', '/target', 'Один batch не может содержать PageSpec для разных site/profile targets.', (string) $result['sourceId'], '', 'one exact siteKey/profileId per batch' ) );
+				$result['plannedAction'] = 'conflict';
+				$result['plan']['action'] = 'conflict';
+			}
+			unset( $result );
 		}
 
 		$by_source = array();
@@ -83,6 +132,13 @@ final class BatchRunner {
 				}
 			}
 		} while ( $changed );
+		foreach ( $results as &$result ) {
+			if ( $result['report']->has_errors() && 'blocked_published' !== ( $result['plannedAction'] ?? '' ) ) {
+				$result['plannedAction'] = 'conflict';
+				$result['plan']['action'] = 'conflict';
+			}
+		}
+		unset( $result );
 		return $results;
 	}
 
@@ -90,26 +146,44 @@ final class BatchRunner {
 		if ( ! $confirmed ) {
 			return new \WP_Error( 'confirmation_required', 'Создание drafts требует явного подтверждения.', array( 'status' => 400 ) );
 		}
+		$preview = $this->validate( $specs );
+		if ( is_wp_error( $preview ) ) {
+			return $preview;
+		}
 		$operation_id = null;
 		if ( $this->logger ) {
-			$adapter = $this->adapters?->active();
 			$operation_context = array( 'batch_id' => wp_generate_uuid4() );
-			if ( $adapter ) {
-				$operation_context += array( 'profile_id' => $adapter->id(), 'profile_version' => $adapter->version(), 'manifest_hash' => $adapter->manifest_hash() );
+			$profile = $preview[0]['profile'] ?? null;
+			if ( $profile instanceof \ContentFactory\Profile\CompiledProfile ) {
+				$operation_context += array( 'profile_id' => $profile->id(), 'profile_version' => $profile->version(), 'manifest_hash' => $profile->canonical_hash() );
 			}
 			$started = $this->logger->start( 'batch_import', $operation_context );
 			$operation_id = is_wp_error( $started ) ? null : $started;
-		}
-		$preview = $this->validate( $specs );
-		if ( is_wp_error( $preview ) ) {
-			if ( $operation_id ) { $this->logger->finish( $operation_id, 'failed', array( 'total' => count( $specs ), 'failed' => count( $specs ) ) ); }
-			return $preview;
 		}
 		$blocked = array();
 		foreach ( $preview as $row ) {
 			if ( $row['report']->has_errors() ) {
 				$blocked[ $row['sourceId'] ] = $row['report'];
 			}
+		}
+		if ( $blocked ) {
+			$results = array();
+			foreach ( $preview as $row ) {
+				$results[] = array(
+					'sourceId' => $row['sourceId'],
+					'action'   => 'skipped',
+					'status'   => 'incompatible',
+					'report'   => $row['report'],
+					'error'    => isset( $blocked[ $row['sourceId'] ] )
+						? 'PageSpec не прошёл batch validation.'
+						: 'Atomic import заблокирован ошибкой другой страницы пакета.',
+				);
+			}
+			$counts = array( 'total' => count( $results ), 'created' => 0, 'updated' => 0, 'no_change' => 0, 'failed' => count( $results ) );
+			if ( $operation_id ) {
+				$this->logger->finish( $operation_id, 'failed', $counts );
+			}
+			return array( 'operationId' => $operation_id, 'counts' => $counts, 'results' => $results );
 		}
 		$hierarchy_sorted = $this->hierarchy->sort_batch( $specs );
 		if ( is_wp_error( $hierarchy_sorted ) ) {
@@ -124,13 +198,18 @@ final class BatchRunner {
 		$sorted = $hierarchy_sorted;
 		$paths = array_diff_key( $all_paths, $blocked );
 		$urls  = array_map( static fn( string $path ): string => home_url( $path ), $paths );
-		$spec_by_id = array_column( $specs, null, 'sourceId' );
 		$created_ids = array();
 		$results = array();
 		$failed = array();
 		$successful = array();
+		$atomic_failed = false;
 		foreach ( $sorted as $spec ) {
 			$source_id = $spec['sourceId'] ?? '';
+			if ( $atomic_failed ) {
+				$results[] = array( 'sourceId' => $source_id, 'action' => 'skipped', 'status' => 'incompatible', 'error' => 'Atomic import остановлен после runtime error.' );
+				$failed[ $source_id ] = true;
+				continue;
+			}
 			if ( isset( $blocked[ $source_id ] ) ) {
 				$results[] = array( 'sourceId' => $source_id, 'action' => 'skipped', 'status' => 'incompatible', 'report' => $blocked[ $source_id ], 'error' => 'PageSpec не прошёл batch validation.' );
 				$failed[ $source_id ] = true;
@@ -149,7 +228,8 @@ final class BatchRunner {
 				$results[] = $page_result;
 				if ( $operation_id ) { $this->logger->log_page( $operation_id, array( 'sourceId' => $source_id, 'action' => 'skipped', 'result' => 'dependency_error', 'compatibility_status' => 'incompatible' ) ); }
 				$failed[ $source_id ] = true;
-				$this->rollback_failed_dependents( $failed, $successful, $results, $spec_by_id, $paths, $created_ids, $operation_id );
+				$this->rollback_successful( $successful, $results, $created_ids, $operation_id, 'runtime_dependency_failed' );
+				$atomic_failed = true;
 				continue;
 			}
 			$state_before = $this->drafts->capture_state( $source_id );
@@ -158,7 +238,8 @@ final class BatchRunner {
 				$results[] = array( 'sourceId' => $source_id, 'action' => 'error', 'status' => 'incompatible', 'error' => $result->get_error_message(), 'data' => $result->get_error_data() );
 				$failed[ $source_id ] = true;
 				if ( $operation_id ) { $this->logger->log_page( $operation_id, array_merge( array( 'sourceId' => $source_id, 'action' => 'import', 'result' => 'error', 'compatibility_status' => 'incompatible' ), $this->safe_error_log( $result ) ) ); }
-				$this->rollback_failed_dependents( $failed, $successful, $results, $spec_by_id, $paths, $created_ids, $operation_id );
+				$this->rollback_successful( $successful, $results, $created_ids, $operation_id, 'atomic_runtime_failed' );
+				$atomic_failed = true;
 				continue;
 			}
 			$results[] = $result;
@@ -169,8 +250,16 @@ final class BatchRunner {
 			}
 		}
 		$counts = $this->counts( $results );
-		if ( $operation_id ) { $this->logger->finish( $operation_id, $counts['failed'] ? 'partial' : 'completed', $counts ); }
+		if ( $operation_id ) { $this->logger->finish( $operation_id, $counts['failed'] ? 'failed' : 'completed', $counts ); }
 		return array( 'operationId' => $operation_id, 'counts' => $counts, 'results' => $results );
+	}
+
+	private function blocked_plan( $report ): array {
+		$conflict = $report->context()['conflict'] ?? array();
+		if ( is_array( $conflict ) && 'published' === ( $conflict['type'] ?? '' ) ) {
+			return array( 'action' => 'blocked_published', 'postId' => (int) ( $conflict['postId'] ?? 0 ), 'reason' => 'published_managed_page' );
+		}
+		return array( 'action' => 'conflict', 'postId' => (int) ( is_array( $conflict ) ? ( $conflict['postId'] ?? 0 ) : 0 ), 'reason' => 'validation_error' );
 	}
 
 	private function planned_paths( array $specs ): array {
@@ -268,34 +357,33 @@ final class BatchRunner {
 		return $ordered;
 	}
 
-	private function rollback_failed_dependents( array &$failed, array &$successful, array &$results, array $spec_by_id, array $paths, array &$created_ids, ?string $operation_id ): void {
-		do {
-			$changed = false;
-			foreach ( $successful as $source_id => $state ) {
-				$dependencies = $this->direct_dependency_ids( $spec_by_id[ $source_id ], $paths );
-				if ( ! array_intersect( $dependencies, array_keys( $failed ) ) ) {
-					continue;
-				}
-				$no_change = 'no_change' === $state['action'];
-				$rolled_back = ! $no_change && $this->drafts->rollback_to_state( $state['state'], $state['postId'] );
-				if ( $no_change && $state['postId'] ) {
-					update_post_meta( $state['postId'], '_content_factory_validation_status', 'stale' );
-				}
-				if ( ! $rolled_back && $state['postId'] ) {
-					update_post_meta( $state['postId'], '_content_factory_validation_status', 'stale' );
-				}
-				$results[ $state['resultIndex'] ]['action'] = $no_change ? 'invalidated' : 'rolled_back';
-				$results[ $state['resultIndex'] ]['status'] = 'incompatible';
-				$results[ $state['resultIndex'] ]['error'] = 'Импорт откачен: зависимая batch-страница завершилась ошибкой.';
-				$results[ $state['resultIndex'] ]['rollback'] = $rolled_back;
-				$failed[ $source_id ] = true;
-				unset( $successful[ $source_id ], $created_ids[ $source_id ] );
-				if ( $operation_id ) {
-					$this->logger->log_page( $operation_id, array( 'sourceId' => $source_id, 'postId' => $state['postId'], 'action' => $no_change ? 'invalidate' : 'rollback', 'result' => $no_change ? 'invalidated' : ( $rolled_back ? 'rolled_back' : 'rollback_failed' ), 'compatibility_status' => 'incompatible', 'rollback_result' => array( 'success' => $rolled_back, 'reason' => 'runtime_dependency_failed' ) ) );
-				}
-				$changed = true;
+	private function rollback_successful( array &$successful, array &$results, array &$created_ids, ?string $operation_id, string $reason ): void {
+		foreach ( array_reverse( $successful, true ) as $source_id => $state ) {
+			$no_change = 'no_change' === $state['action'];
+			$rolled_back = $no_change || $this->drafts->rollback_to_state( $state['state'], $state['postId'] );
+			if ( ! $rolled_back ) {
+				update_post_meta( $state['postId'], '_content_factory_validation_status', 'stale' );
 			}
-		} while ( $changed );
+			$results[ $state['resultIndex'] ]['action']   = 'rolled_back';
+			$results[ $state['resultIndex'] ]['status']   = 'incompatible';
+			$results[ $state['resultIndex'] ]['error']    = 'Atomic import откачен после runtime error другой страницы.';
+			$results[ $state['resultIndex'] ]['rollback'] = $rolled_back;
+			unset( $created_ids[ $source_id ] );
+			if ( $operation_id ) {
+				$this->logger->log_page(
+					$operation_id,
+					array(
+						'sourceId'            => $source_id,
+						'postId'              => $state['postId'],
+						'action'              => 'rollback',
+						'result'              => $no_change ? 'unchanged' : ( $rolled_back ? 'rolled_back' : 'rollback_failed' ),
+						'compatibility_status' => 'incompatible',
+						'rollback_result'      => array( 'success' => $rolled_back, 'reason' => $reason ),
+					)
+				);
+			}
+		}
+		$successful = array();
 	}
 
 	private function source_exists( string $source_id ): bool {
@@ -309,7 +397,6 @@ final class BatchRunner {
 		$report = $data['report'] ?? null;
 		return array(
 			'issues' => $report instanceof \ContentFactory\Contract\CompatibilityReport ? $report->issues() : array(),
-			'migrations' => $report instanceof \ContentFactory\Contract\CompatibilityReport ? ( $report->context()['migrations'] ?? array() ) : array(),
 			'defaults_applied' => $report instanceof \ContentFactory\Contract\CompatibilityReport ? ( $report->context()['defaultsApplied'] ?? array() ) : array(),
 			'rollback_result' => array( 'rollback' => true === ( $data['rollback'] ?? false ), 'status' => absint( $data['status'] ?? 0 ), 'errorCode' => $error->get_error_code() ),
 		);

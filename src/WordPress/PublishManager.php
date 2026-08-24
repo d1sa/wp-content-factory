@@ -35,15 +35,21 @@ final class PublishManager {
 				continue;
 			}
 			$spec = json_decode( (string) get_post_meta( $post->ID, '_content_factory_source_spec', true ), true );
-			$adapter = $this->adapters->active();
-			if ( ! is_array( $spec ) || ! $adapter ) {
-				$results[] = array( 'sourceId' => $source_id, 'status' => 'error', 'message' => 'Исходный PageSpec или активный adapter недоступен.' );
+			if ( ! is_array( $spec ) ) {
+				$results[] = array( 'sourceId' => $source_id, 'status' => 'error', 'message' => 'Исходный PageSpec недоступен.' );
 				continue;
 			}
-			$report = $this->pipeline->process( $spec );
+			$pipeline_result = $this->pipeline->process_result( $spec );
+			$report = $pipeline_result->report();
+			$profile = $pipeline_result->profile();
+			if ( ! $profile ) {
+				update_post_meta( $post->ID, '_content_factory_validation_status', 'stale' );
+				$results[] = array( 'sourceId' => $source_id, 'postId' => $post->ID, 'status' => 'error', 'message' => 'Точный профиль исходного PageSpec недоступен.', 'issues' => $report->issues() );
+				continue;
+			}
 			$seo_title = (string) get_post_meta( $post->ID, '_yoast_wpseo_title', true );
 			$seo_description = (string) get_post_meta( $post->ID, '_yoast_wpseo_metadesc', true );
-			$planned_content = (string) ( $report->context()['postContent'] ?? '' );
+			$planned_content = $pipeline_result->build_plan()?->post_content() ?? '';
 			$current_hash = $this->hashes->validation_hash(
 				array(
 					'title' => $post->post_title,
@@ -53,12 +59,16 @@ final class PublishManager {
 					'content' => $post->post_content,
 					'seoTitle' => $seo_title,
 					'seoDescription' => $seo_description,
-					'profileId' => $adapter->id(),
-					'profileVersion' => $adapter->version(),
-					'siteDefaultsVersion' => $adapter->manifest()['siteDefaultsVersion'] ?? '1',
+					'profileId' => $profile->id(),
+					'profileVersion' => $profile->version(),
+					'siteDefaultsVersion' => $profile->defaults_version(),
 				)
 			);
-			if ( $report->has_errors() || '' === $seo_title || '' === $seo_description || $planned_content !== $post->post_content || ! parse_blocks( $post->post_content ) || ! hash_equals( $stored_hash, $current_hash ) ) {
+			$profile_matches = $profile->id() === (string) get_post_meta( $post->ID, '_content_factory_profile_id', true )
+				&& $profile->version() === (string) get_post_meta( $post->ID, '_content_factory_profile_version', true )
+				&& $profile->defaults_version() === (string) get_post_meta( $post->ID, '_content_factory_site_defaults_version', true )
+				&& $profile->canonical_hash() === (string) get_post_meta( $post->ID, '_content_factory_manifest_hash', true );
+			if ( $report->has_errors() || ! $profile_matches || '' === $seo_title || '' === $seo_description || $planned_content !== $post->post_content || ! parse_blocks( $post->post_content ) || ! hash_equals( $stored_hash, $current_hash ) ) {
 				update_post_meta( $post->ID, '_content_factory_validation_status', 'stale' );
 				$results[] = array( 'sourceId' => $source_id, 'postId' => $post->ID, 'status' => 'error', 'message' => 'Финальная проверка обнаружила изменения content, SEO или validation hash.', 'issues' => $report->issues(), 'compatibility_status' => $report->status() );
 				continue;

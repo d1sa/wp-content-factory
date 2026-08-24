@@ -26,6 +26,16 @@
 	max-width: min(100%, 520px);
 }
 
+.content-factory-admin .cf-advanced-import {
+	max-width: 760px;
+	margin-top: 12px;
+}
+
+.content-factory-admin .cf-advanced-import summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+
 .content-factory-admin .spinner {
 	float: none;
 	margin: 0 2px;
@@ -102,7 +112,9 @@
 
 .content-factory-admin .cf-badge--compatible,
 .content-factory-admin .cf-badge--valid,
-.content-factory-admin .cf-badge--publish {
+.content-factory-admin .cf-badge--publish,
+.content-factory-admin .cf-badge--create,
+.content-factory-admin .cf-badge--no_change {
 	border-color: #00a32a;
 	background: #edfaef;
 	color: #005b17;
@@ -114,9 +126,17 @@
 	color: #674c00;
 }
 
+.content-factory-admin .cf-badge--update_draft {
+	border-color: #2271b1;
+	background: #f0f6fc;
+	color: #135e96;
+}
+
 .content-factory-admin .cf-badge--incompatible,
 .content-factory-admin .cf-badge--error,
-.content-factory-admin .cf-badge--invalid {
+.content-factory-admin .cf-badge--invalid,
+.content-factory-admin .cf-badge--blocked_published,
+.content-factory-admin .cf-badge--conflict {
 	border-color: #d63638;
 	background: #fcf0f1;
 	color: #8a2424;
@@ -145,6 +165,27 @@
 
 .content-factory-admin .cf-issue--error {
 	border-left-color: #d63638;
+}
+
+.content-factory-admin .cf-issue__message {
+	display: block;
+}
+
+.content-factory-admin .cf-issue__technical {
+	margin-top: 3px;
+	color: #50575e;
+	font-size: 12px;
+}
+
+.content-factory-admin .cf-issue__technical summary {
+	cursor: pointer;
+}
+
+.content-factory-admin .cf-issue__technical code {
+	display: block;
+	margin-top: 3px;
+	white-space: normal;
+	word-break: break-word;
 }
 
 .content-factory-admin .cf-code {

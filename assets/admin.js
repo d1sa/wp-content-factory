@@ -13,7 +13,10 @@
 
 	const state = {
 		report: null,
-		compatiblePages: [],
+		validatedFile: null,
+		packageHash: '',
+		validatedPageCount: 0,
+		canImport: false,
 		managedLoaded: false,
 	};
 
@@ -138,7 +141,8 @@
 				spec: spec,
 				sourceId: result.sourceId || ( spec && spec.sourceId ) || '',
 				title: result.title || ( spec && spec.post && spec.post.title ) || ( spec && spec.title ) || '',
-				path: result.path || ( reportData.resolved && reportData.resolved.expectedPath ) || '',
+				path: result.expectedPath || result.path || ( reportData.resolved && reportData.resolved.expectedPath ) || '',
+				plannedAction: result.plannedAction || 'conflict',
 				counts: reportData.counts || result.counts || {},
 			};
 		} );
@@ -193,6 +197,11 @@
 			valid: 'Проверена',
 			draft: 'Черновик',
 			publish: 'Опубликована',
+			create: 'Будет создана',
+			update_draft: 'Черновик обновится',
+			no_change: 'Без изменений',
+			blocked_published: 'Опубликована — заблокировано',
+			conflict: 'Конфликт',
 		};
 		return labels[ status ] || status || 'Неизвестно';
 	}
@@ -209,33 +218,36 @@
 		const list = element( 'ul', 'cf-issues' );
 		issues.forEach( function ( issue ) {
 			const severity = issue.severity || 'info';
-			const label = [ severity.toUpperCase(), issue.code, issue.path ].filter( Boolean ).join( ' · ' );
 			const item = element( 'li', 'cf-issue cf-issue--' + severity );
-			item.appendChild( element( 'strong', '', label ) );
-			item.appendChild( document.createTextNode( ': ' + ( issue.message || 'Без описания' ) ) );
+			item.appendChild( element( 'span', 'cf-issue__message', issue.message || 'Без описания' ) );
+			const technical = element( 'details', 'cf-issue__technical' );
+			technical.appendChild( element( 'summary', '', 'Технические детали' ) );
+			technical.appendChild( element( 'code', '', [ severity.toUpperCase(), issue.code, issue.path ].filter( Boolean ).join( ' · ' ) ) );
+			item.appendChild( technical );
 			list.appendChild( item );
 		} );
 		return list;
 	}
 
-	function renderPreview( report, filename ) {
+	function renderPreview( report, filename, file ) {
 		const pages = validationPages( report, filename );
 		state.report = report;
-		state.compatiblePages = pages.filter( isCompatible ).map( function ( page ) {
-			return page.spec;
-		} ).filter( Boolean );
+		state.validatedFile = file;
+		state.packageHash = report && report.packageHash ? String( report.packageHash ) : '';
+		state.validatedPageCount = pages.length;
 
 		const compatibleCount = pages.filter( isCompatible ).length;
 		const warningCount = pages.filter( function ( page ) {
 			return 'compatible_with_warnings' === page.status;
 		} ).length;
 		const incompatibleCount = pages.length - compatibleCount;
+		state.canImport = pages.length > 0 && 0 === incompatibleCount && !! state.validatedFile && !! state.packageHash;
 		elements.previewSummary.textContent = 'Всего: ' + pages.length + '. Совместимы: ' + compatibleCount + '. С предупреждениями: ' + warningCount + '. Требуют исправления: ' + incompatibleCount + '.';
 
 		const table = element( 'table', 'widefat striped cf-report-table' );
 		const head = element( 'thead' );
 		const headRow = element( 'tr' );
-		[ 'Файл / страница', 'Путь', 'Статус', 'Секции', 'Ссылки', 'Assets', 'Issues' ].forEach( function ( heading ) {
+		[ 'Файл / страница', 'Путь', 'Статус', 'Действие', 'Секции', 'Ссылки', 'Assets', 'Issues' ].forEach( function ( heading ) {
 			const cell = element( 'th', '', heading );
 			cell.scope = 'col';
 			headRow.appendChild( cell );
@@ -254,6 +266,9 @@
 			const statusCell = element( 'td' );
 			statusCell.appendChild( statusBadge( page.status ) );
 			row.appendChild( statusCell );
+			const actionCell = element( 'td' );
+			actionCell.appendChild( statusBadge( page.plannedAction ) );
+			row.appendChild( actionCell );
 			row.appendChild( element( 'td', '', String( countFor( page, 'sections' ) ) ) );
 			row.appendChild( element( 'td', '', String( countFor( page, 'links' ) ) ) );
 			row.appendChild( element( 'td', '', String( countFor( page, 'assets' ) ) ) );
@@ -266,13 +281,13 @@
 		table.appendChild( body );
 		elements.previewTable.replaceChildren( table );
 		elements.preview.hidden = false;
-		elements.createCompatible.disabled = 0 === state.compatiblePages.length;
-		elements.createCompatible.textContent = 'Создать drafts: ' + state.compatiblePages.length;
+		elements.createCompatible.disabled = ! state.canImport;
+		elements.createCompatible.textContent = 'Создать или обновить черновики: ' + pages.length;
 
-		if ( compatibleCount && ! state.compatiblePages.length ) {
-			showNotice( elements.importStatus, 'Проверка завершена, но ответ не содержит нормализованные PageSpec для создания drafts.', 'warning' );
+		if ( incompatibleCount ) {
+			showNotice( elements.importStatus, 'Пакет содержит ошибки. В атомарном режиме черновики не будут созданы, пока ошибки не исправлены.', 'warning' );
 		} else {
-			showNotice( elements.importStatus, 'Проверка завершена. Просмотрите отчёт перед созданием drafts.', 'success' );
+			showNotice( elements.importStatus, 'Проверка завершена. Просмотрите отчёт перед созданием черновиков.', 'success' );
 		}
 	}
 
@@ -292,15 +307,19 @@
 		formData.append( 'file', file, file.name );
 		setBusy( elements.validateButton, elements.importSpinner, true );
 		elements.preview.hidden = true;
+		state.report = null;
+		state.validatedFile = null;
+		state.packageHash = '';
+		state.canImport = false;
 		showNotice( elements.importStatus, 'Файл загружается и проверяется…', 'info' );
 
 		try {
 			const report = await wp.apiFetch( {
-				path: '/content-factory/v1/validate',
+				path: '/content-factory/v1/validate?detail=summary',
 				method: 'POST',
 				body: formData,
 			} );
-			renderPreview( report, file.name );
+			renderPreview( report, file.name, file );
 		} catch ( error ) {
 			showNotice( elements.importStatus, errorMessage( error ), 'error' );
 		} finally {
@@ -308,41 +327,67 @@
 		}
 	}
 
-	function downloadReport() {
-		if ( ! state.report ) {
+	async function downloadReport() {
+		if ( ! state.validatedFile ) {
 			return;
 		}
-		const blob = new Blob( [ JSON.stringify( state.report, null, 2 ) ], { type: 'application/json;charset=utf-8' } );
-		const url = URL.createObjectURL( blob );
-		const link = document.createElement( 'a' );
-		link.href = url;
-		link.download = 'content-factory-report.json';
-		document.body.appendChild( link );
-		link.click();
-		link.remove();
-		URL.revokeObjectURL( url );
+		setBusy( elements.downloadReport, null, true );
+		showNotice( elements.importStatus, 'Готовим полный технический отчёт…', 'info' );
+		try {
+			const formData = new FormData();
+			formData.append( 'file', state.validatedFile, state.validatedFile.name );
+			const report = await wp.apiFetch( {
+				path: '/content-factory/v1/validate?detail=full',
+				method: 'POST',
+				body: formData,
+			} );
+			const blob = new Blob( [ JSON.stringify( report, null, 2 ) ], { type: 'application/json;charset=utf-8' } );
+			const url = URL.createObjectURL( blob );
+			const link = document.createElement( 'a' );
+			link.href = url;
+			link.download = 'content-factory-report.json';
+			document.body.appendChild( link );
+			link.click();
+			link.remove();
+			URL.revokeObjectURL( url );
+			showNotice( elements.importStatus, 'Полный технический отчёт скачан.', 'success' );
+		} catch ( error ) {
+			showNotice( elements.importStatus, errorMessage( error ), 'error' );
+		} finally {
+			setBusy( elements.downloadReport, null, false );
+		}
 	}
 
 	async function createCompatiblePages() {
-		if ( ! state.compatiblePages.length ) {
+		if ( ! state.canImport || ! state.validatedFile ) {
 			return;
 		}
 		setBusy( elements.createCompatible, null, true );
-		showNotice( elements.importStatus, 'Создаём совместимые drafts…', 'info' );
+		showNotice( elements.importStatus, 'Атомарно создаём или обновляем черновики из проверенного пакета…', 'info' );
 		try {
+			const formData = new FormData();
+			formData.append( 'file', state.validatedFile, state.validatedFile.name );
+			formData.append( 'confirmed', 'true' );
+			formData.append( 'detail', 'summary' );
+			formData.append( 'validatedHash', state.packageHash );
 			const result = await wp.apiFetch( {
 				path: '/content-factory/v1/pages/batch',
 				method: 'POST',
-				data: { pages: state.compatiblePages, confirmed: true },
+				body: formData,
 			} );
+			const failed = result && result.counts ? Number( result.counts.failed || 0 ) : 0;
+			if ( failed > 0 ) {
+				showNotice( elements.importStatus, 'Атомарный импорт остановлен. Пакет не изменил черновики; ошибок: ' + failed + '.', 'error' );
+				return;
+			}
 			const count = result && ( result.createdCount || result.created || ( result.counts && ( result.counts.created + result.counts.updated + result.counts.no_change ) ) || ( result.results && result.results.length ) );
-			showNotice( elements.importStatus, count ? 'Операция завершена. Обработано страниц: ' + count + '.' : 'Операция создания drafts завершена.', 'success' );
+			showNotice( elements.importStatus, count ? 'Операция завершена. Обработано черновиков: ' + count + '.' : 'Пакет обработан без изменений.', 'success' );
 			state.managedLoaded = false;
 		} catch ( error ) {
 			showNotice( elements.importStatus, errorMessage( error ), 'error' );
 		} finally {
 			setBusy( elements.createCompatible, null, false );
-			elements.createCompatible.disabled = 0 === state.compatiblePages.length;
+			elements.createCompatible.disabled = ! state.canImport;
 		}
 	}
 
@@ -600,6 +645,15 @@
 		} );
 	} );
 	elements.importForm.addEventListener( 'submit', validateUpload );
+	elements.importFile.addEventListener( 'change', function () {
+		state.report = null;
+		state.validatedFile = null;
+		state.packageHash = '';
+		state.validatedPageCount = 0;
+		state.canImport = false;
+		elements.preview.hidden = true;
+		elements.createCompatible.disabled = true;
+	} );
 	elements.downloadReport.addEventListener( 'click', downloadReport );
 	elements.createCompatible.addEventListener( 'click', createCompatiblePages );
 	elements.refreshManaged.addEventListener( 'click', loadManagedPages );

@@ -11,6 +11,7 @@ if ( ! is_readable( CF_TEST_WP_LOAD ) ) {
 
 define( 'WP_USE_THEMES', false );
 require_once CF_TEST_WP_LOAD;
+require_once __DIR__ . '/SnapshotArtifacts.php';
 
 $plugin_file = dirname( __DIR__ ) . '/content-factory.php';
 if ( ! defined( 'CONTENT_FACTORY_DIR' ) ) {
@@ -92,9 +93,11 @@ function cf_assert_issue( ContentFactory\Contract\CompatibilityReport $report, s
 /** @return array<string,mixed> */
 function cf_core_spec(): array {
 	return array(
-		'schemaVersion' => '1.0',
+		'schemaVersion' => '1.1',
 		'sourceId'      => 'cf-test-core-valid',
 		'pageType'      => 'service-detail',
+		'generatedAgainst' => array( 'profileId' => 'potolki-inner', 'profileVersion' => '2.0.0', 'manifestHash' => 'sha256:' . str_repeat( 'a', 64 ) ),
+		'target' => array( 'siteKey' => 'potolkinaveka40', 'profileId' => 'potolki-inner' ),
 		'post'          => array(
 			'title' => 'Contract test page',
 			'slug'  => 'contract-test-page',
@@ -125,6 +128,17 @@ function cf_load_fixture( string $name ): array {
 		throw new CF_Test_Failure( 'Invalid golden fixture JSON: ' . $exception->getMessage() );
 	}
 	cf_assert( is_array( $data ) && ! array_is_list( $data ), 'Golden fixture must be a PageSpec object.' );
+	return $data;
+}
+
+function cf_load_json_file( string $path ): array {
+	cf_assert( is_readable( $path ), 'Expected JSON artifact is missing: ' . $path );
+	try {
+		$data = json_decode( (string) file_get_contents( $path ), true, 512, JSON_THROW_ON_ERROR );
+	} catch ( JsonException $exception ) {
+		throw new CF_Test_Failure( 'Invalid expected artifact JSON: ' . $exception->getMessage() );
+	}
+	cf_assert( is_array( $data ), 'Expected artifact must decode to an array.' );
 	return $data;
 }
 
@@ -342,7 +356,27 @@ $runner->test(
 		$spec['generatedAgainst'] = array( 'profileId' => array() );
 		$report = $core->validate( $spec );
 		cf_assert( $report->has_errors(), 'Non-string optional metadata was accepted.' );
-		cf_assert( count( array_filter( cf_issue_codes( $report ), static fn( string $code ): bool => 'INVALID_TYPE' === $code ) ) >= 3, 'Expected all optional type failures.' );
+		cf_assert_issue( $report, 'INVALID_TYPE' );
+		cf_assert( count( $report->issues() ) >= 3, 'Expected all metadata failures.' );
+	}
+);
+
+$runner->test(
+	'core accepts only PageSpec 1.1 with complete identity',
+	static function () use ( $core ): void {
+		$current = cf_core_spec();
+		cf_assert( ! $core->validate( $current )->has_errors(), 'Complete PageSpec 1.1 identity was rejected.' );
+		$old = $current;
+		$old['schemaVersion'] = '1.0';
+		cf_assert_issue( $core->validate( $old ), 'UNSUPPORTED_SCHEMA_VERSION' );
+		unset( $current['target'], $current['generatedAgainst'] );
+		$missing = $core->validate( $current );
+		cf_assert_issue( $missing, 'REQUIRED_FIELD' );
+		$current['target'] = array( 'siteKey' => 'potolkinaveka40', 'profileId' => 'potolki-inner' );
+		$current['generatedAgainst'] = array( 'profileId' => 'potolki-inner', 'profileVersion' => '2.0.0', 'manifestHash' => 'sha256:' . str_repeat( 'a', 64 ) );
+		cf_assert( ! $core->validate( $current )->has_errors(), 'Complete PageSpec 1.1 identity was rejected.' );
+		$current['generatedAgainst']['manifestHash'] = str_repeat( 'a', 64 );
+		cf_assert_issue( $core->validate( $current ), 'INVALID_FORMAT' );
 	}
 );
 
@@ -361,10 +395,99 @@ $runner->test(
 );
 
 $runner->test(
+	'contract auditor catches executable consumer and allowedBlocks drift',
+	static function () use ( $adapter ): void {
+		$manifest = $adapter->compiled_profile()->configuration();
+		$consumers = array(
+			'hero' => array( 'kicker', 'title', 'lead', 'primaryAction', 'benefits', 'image', 'badge', 'note' ),
+			'article' => array( 'title', 'accent', 'body' ), 'catalog' => array( 'kicker', 'title', 'items' ),
+			'steps' => array( 'kicker', 'title', 'items' ), 'faq' => array( 'kicker', 'title', 'items' ),
+			'parent-link' => array( 'label', 'linkLabel' ),
+			'cta' => array( 'variant', 'kicker', 'title', 'text', 'benefits', 'primaryAction', 'secondaryAction' ),
+		);
+		$manifest['sections']['hero']['schema']['properties']['orphan'] = array( 'type' => 'string' );
+		$manifest['sections']['hero']['allowedData'][] = 'orphan';
+		$auditor = new ContentFactory\Contract\ContractAuditor();
+		$report = $auditor->audit( $manifest, array( 'fieldConsumers' => $consumers ) );
+		cf_assert_issue( $report, 'SEMANTIC_FIELD_WITHOUT_CONSUMER' );
+
+		$clean = $adapter->compiled_profile()->configuration();
+		$names = array_keys( $clean['policies']['registryContracts'] ?? array() );
+		$registry = ( new ContentFactory\Contract\BlockRegistrySnapshot() )->capture( $names );
+		$registry['potolki/inner-article']['allowedBlocks'] = array();
+		$report = $auditor->audit( $clean, array( 'fieldConsumers' => $consumers, 'registry' => $registry ) );
+		cf_assert_issue( $report, 'BLOCK_ALLOWED_CHILDREN_DRIFT' );
+	}
+);
+
+$runner->test(
+	'Contract Bundle rejects common secret keys and serves strict 1.1 examples',
+	static function () use ( $adapter ): void {
+		$builder = new ContentFactory\Contract\ContractBundleBuilder( new ContentFactory\Validation\PageSpecSchemaRegistry() );
+		$configuration = $adapter->compiled_profile()->configuration();
+		$configuration['siteDefaults']['apiKey'] = 'must-not-leak';
+		$unsafe_profile = new ContentFactory\Profile\CompiledProfile(
+			$configuration,
+			$adapter->compiled_profile()->contract(),
+			$adapter->compiled_profile()->canonical_hash()
+		);
+		cf_assert( is_wp_error( $builder->build( $unsafe_profile, $adapter->self_check() ) ), 'Contract Bundle accepted apiKey.' );
+
+		$admin = get_user_by( 'login', 'admin' );
+		cf_assert( $admin instanceof WP_User, 'Admin user is unavailable for REST contract test.' );
+		$original_user = get_current_user_id();
+		wp_set_current_user( $admin->ID );
+		try {
+			$request = new WP_REST_Request( 'GET', '/content-factory/v1/contract' );
+			$request->set_param( 'siteKey', 'potolkinaveka40' );
+			$request->set_param( 'profileId', 'potolki-inner' );
+			$response = rest_do_request( $request );
+		} finally {
+			wp_set_current_user( $original_user );
+		}
+		$data = $response->get_data();
+		cf_assert_same( 200, $response->get_status(), 'Contract endpoint status' );
+		cf_assert( isset( $data['assets']['services-types']['path'] ), 'Contract Bundle omitted current public theme assets.' );
+		cf_assert_same( 'assets/images/services-types.jpg', $data['assets']['services-types']['path'], 'Contract Bundle asset path' );
+		cf_assert_same( 404, rest_do_request( new WP_REST_Request( 'GET', '/content-factory/v1/manifest' ) )->get_status(), 'Removed manifest endpoint status' );
+		cf_assert_same( 404, rest_do_request( new WP_REST_Request( 'GET', '/content-factory/v1/schema/pagespec' ) )->get_status(), 'Removed schema endpoint status' );
+		foreach ( $data['examples'] ?? array() as $example ) {
+			cf_assert_same( '1.1', $example['schemaVersion'] ?? '', 'Contract example PageSpec version' );
+			cf_assert_same( $data['identity']['manifestHash'], $example['generatedAgainst']['manifestHash'] ?? '', 'Contract example manifest hash' );
+			cf_assert( ! is_wp_error( rest_validate_value_from_schema( $example, $data['pageSpecSchema'], 'example' ) ), 'Contract example does not pass advertised PageSpec schema.' );
+		}
+		$asset_variants = $data['pageSpecSchema']['$defs']['asset']['oneOf'] ?? array();
+		cf_assert( $asset_variants && ! array_filter( $asset_variants, static fn( array $variant ): bool => isset( $variant['properties']['kind'] ) ), 'PageSpec 1.1 still advertises asset.kind.' );
+		cf_assert( count( array_filter( $asset_variants, static fn( array $variant ): bool => isset( $variant['properties']['source'] ) ) ) === count( $asset_variants ), 'PageSpec 1.1 asset variants do not use runtime source.' );
+	}
+);
+
+$runner->test(
+	'baseline profile self-check and normalized fixture issues stay reviewable',
+	static function () use ( $adapter ): void {
+		$baseline = cf_load_json_file( __DIR__ . '/fixtures/expected/baseline.json' );
+		cf_assert_same( $baseline['profileId'] ?? '', $adapter->id(), 'Baseline profile ID' );
+		cf_assert_same( $baseline['profileVersion'] ?? '', $adapter->version(), 'Baseline profile version' );
+		cf_assert_same( $baseline['manifestHash'] ?? '', $adapter->manifest_hash(), 'Baseline manifest hash' );
+		cf_assert_same( $baseline['selfCheck'] ?? array(), $adapter->self_check()->jsonSerialize(), 'Baseline self-check' );
+		foreach ( array( 'service-detail', 'service-category' ) as $fixture_name ) {
+			$spec   = cf_load_fixture( $fixture_name );
+			$report = $adapter->validate( $spec, CF_Snapshot_Artifacts::context( $adapter, $spec ) );
+			$actual = array(
+				'status'     => $report->status(),
+				'issues'     => array_map( static fn( $issue ): array => $issue->jsonSerialize(), $report->issues() ),
+				'blockCount' => 2,
+			);
+			cf_assert_same( $baseline['fixtures'][ $fixture_name ] ?? array(), $actual, $fixture_name . ' normalized baseline issues' );
+		}
+	}
+);
+
+$runner->test(
 	'adapter exposes verified SEO catalog assets',
 	static function () use ( $adapter ): void {
 		cf_assert( null !== $adapter, 'Adapter is unavailable.' );
-		$assets = $adapter->manifest()['assets'] ?? array();
+		$assets = $adapter->compiled_profile()->assets();
 		$expected = array(
 			'hero-benefit-canvas',
 			'gallery-niche',
@@ -392,18 +515,84 @@ $runner->test(
 	static function () use ( $adapter ): void {
 		cf_assert( null !== $adapter, 'Adapter is unavailable.' );
 		$spec = cf_load_fixture( 'service-detail' );
-		$manifest = $adapter->manifest();
+		$profile = $adapter->compiled_profile();
 		$spec['generatedAgainst'] = array(
 			'profileId'      => $adapter->id(),
 			'profileVersion' => $adapter->version(),
 			'manifestHash'   => $adapter->manifest_hash(),
 		);
 		$spec['target'] = array(
-			'siteKey'   => $manifest['siteKey'],
+			'siteKey'   => $profile->site_key(),
 			'profileId' => $adapter->id(),
 		);
 		$report = $adapter->validate( $spec, cf_adapter_context( $spec ) );
 		cf_assert( ! $report->has_errors(), 'Exact metadata was rejected: ' . implode( ', ', cf_issue_codes( $report ) ) );
+	}
+);
+
+$runner->test(
+	'adapter accepts unbounded content sections, steps and FAQ items',
+	static function () use ( $adapter, $links ): void {
+		cf_assert( null !== $adapter, 'Adapter is unavailable.' );
+		$detail   = cf_load_fixture( 'service-detail' );
+		$category = cf_load_fixture( 'service-category' );
+		$sections = array( $detail['sections'][0] );
+
+		for ( $index = 1; $index <= 12; ++$index ) {
+			$article                  = $detail['sections'][1];
+			$article['id']            = 'article-' . $index;
+			$article['data']['title'] = 'Тематический раздел ' . $index;
+			$sections[]               = $article;
+		}
+		for ( $index = 1; $index <= 2; ++$index ) {
+			$catalog       = $category['sections'][1];
+			$catalog['id'] = 'catalog-' . $index;
+			$sections[]    = $catalog;
+		}
+		for ( $section_index = 1; $section_index <= 2; ++$section_index ) {
+			$steps                  = $detail['sections'][2];
+			$steps['id']            = 'steps-' . $section_index;
+			$steps['data']['items'] = array();
+			for ( $item_index = 1; $item_index <= 12; ++$item_index ) {
+				$steps['data']['items'][] = array( 'title' => 'Этап ' . $item_index, 'text' => 'Описание этапа ' . $section_index . '.' . $item_index . '.' );
+			}
+			$sections[] = $steps;
+		}
+		$sections[] = $detail['sections'][4];
+		$sections[] = array( 'id' => 'parent-navigation', 'type' => 'parent-link', 'data' => array() );
+		for ( $section_index = 1; $section_index <= 2; ++$section_index ) {
+			$faq                  = $detail['sections'][3];
+			$faq['id']            = 'faq-' . $section_index;
+			$faq['data']['items'] = array();
+			for ( $item_index = 1; $item_index <= 12; ++$item_index ) {
+				$faq['data']['items'][] = array( 'question' => 'Вопрос ' . $section_index . '.' . $item_index . '?', 'answer' => 'Ответ ' . $section_index . '.' . $item_index . '.' );
+			}
+			$sections[] = $faq;
+		}
+		$detail['sections'] = $sections;
+
+		$report = $adapter->validate( $detail, cf_adapter_context( $detail ) );
+		cf_assert( ! $report->has_errors(), 'Unbounded content was rejected: ' . implode( ', ', cf_issue_codes( $report ) ) );
+		$tree = $adapter->build( $detail, cf_adapter_context( $detail ) );
+		$names = array_map( static fn( ContentFactory\Contract\BlockNode $node ): string => $node->name(), $tree[1]->children() );
+		cf_assert_same( 12, count( array_filter( $names, static fn( string $name ): bool => 'potolki/inner-article' === $name ) ), 'Unbounded article count' );
+		cf_assert_same( 2, count( array_filter( $names, static fn( string $name ): bool => 'potolki/inner-catalog' === $name ) ), 'Unbounded catalog count' );
+		cf_assert_same( 2, count( array_filter( $names, static fn( string $name ): bool => 'potolki/inner-steps' === $name ) ), 'Unbounded steps section count' );
+		cf_assert_same( 2, count( array_filter( $names, static fn( string $name ): bool => 'potolki/inner-faq' === $name ) ), 'Unbounded FAQ section count' );
+		cf_assert_same( 1, count( array_filter( $names, static fn( string $name ): bool => 'potolki/inner-cta' === $name ) ), 'Theme allows one CTA' );
+		cf_assert_same( 1, count( array_filter( $names, static fn( string $name ): bool => 'potolki/inner-parent-link' === $name ) ), 'Explicit parent link after CTA is not duplicated' );
+		cf_assert_same( 'potolki/inner-faq', end( $names ), 'CTA position follows the source instead of being forced to the end' );
+
+		$declarative_children = $tree[1]->children();
+		$step_nodes = array_values( array_filter( $declarative_children, static fn( ContentFactory\Contract\BlockNode $node ): bool => 'potolki/inner-steps' === $node->name() ) );
+		$faq_nodes = array_values( array_filter( $declarative_children, static fn( ContentFactory\Contract\BlockNode $node ): bool => 'potolki/inner-faq' === $node->name() ) );
+		$catalog_nodes = array_values( array_filter( $declarative_children, static fn( ContentFactory\Contract\BlockNode $node ): bool => 'potolki/inner-catalog' === $node->name() ) );
+		cf_assert_same( array( 'steps-1', 'steps-2' ), array_map( static fn( ContentFactory\Contract\BlockNode $node ): string => (string) ( $node->attrs()['sectionId'] ?? '' ), $step_nodes ), 'Declarative engine preserved repeated steps IDs' );
+		cf_assert_same( array( 12, 12 ), array_map( static fn( ContentFactory\Contract\BlockNode $node ): int => count( $node->children() ), $step_nodes ), 'Declarative engine preserved all repeated step items' );
+		cf_assert_same( array( 'faq-1', 'faq-2' ), array_map( static fn( ContentFactory\Contract\BlockNode $node ): string => (string) ( $node->attrs()['sectionId'] ?? '' ), $faq_nodes ), 'Declarative engine preserved repeated FAQ IDs' );
+		cf_assert_same( array( 12, 12 ), array_map( static fn( ContentFactory\Contract\BlockNode $node ): int => count( $node->children() ), $faq_nodes ), 'Declarative engine preserved all repeated FAQ items' );
+		cf_assert_same( array( 'catalog-1', 'catalog-2' ), array_map( static fn( ContentFactory\Contract\BlockNode $node ): string => (string) ( $node->attrs()['sectionId'] ?? '' ), $catalog_nodes ), 'Declarative engine preserved repeated catalog IDs' );
+		cf_assert_same( array( 3, 3 ), array_map( static fn( ContentFactory\Contract\BlockNode $node ): int => count( $node->children() ), $catalog_nodes ), 'Declarative engine preserved all repeated catalog cards' );
 	}
 );
 
@@ -420,40 +609,6 @@ $runner->test(
 		$report = $adapter->validate( $spec, cf_adapter_context( $spec ) );
 		cf_assert( ! $report->has_errors(), 'Advisory generatedAgainst mismatch blocked the fixture.' );
 		cf_assert( 'compatible_with_warnings' === $report->status(), 'Expected compatibility warnings for generatedAgainst mismatch.' );
-	}
-);
-
-$runner->test(
-	'pipeline applies declared field aliases before validation',
-	static function () use ( $adapter, $hierarchy, $serializer ): void {
-		$manifest = $adapter->manifest();
-		$manifest['aliases'] = array( 'hero.heading' => 'hero.title', 'faq.items[].text' => 'faq.items[].answer' );
-		$path = tempnam( sys_get_temp_dir(), 'cf-alias-manifest-' );
-		cf_assert( is_string( $path ) && false !== file_put_contents( $path, wp_json_encode( $manifest ) ), 'Could not create alias manifest fixture.' );
-		try {
-			$alias_adapter = new ContentFactory\Adapter\PotolkiInnerAdapter( new ContentFactory\Resolve\LinkResolver(), $path );
-			$registry = new ContentFactory\Adapter\AdapterRegistry();
-			$registry->register( $alias_adapter );
-			$pipeline = new ContentFactory\Service\ContentPipeline( $registry, new ContentFactory\Validation\CorePageSpecValidator(), $hierarchy, $serializer );
-			$spec = cf_load_fixture( 'service-detail' );
-			unset( $spec['post']['parent'] );
-			cf_replace_path_links( $spec );
-			$spec['sections'][0]['data']['heading'] = $spec['sections'][0]['data']['title'];
-			unset( $spec['sections'][0]['data']['title'] );
-			$report = $pipeline->process( $spec );
-			cf_assert( ! $report->has_errors(), 'Declared alias was not applied: ' . wp_json_encode( $report, JSON_UNESCAPED_UNICODE ) );
-			cf_assert_issue( $report, 'ALIAS_APPLIED' );
-			cf_assert_same( 'Матовые натяжные потолки в Калуге', $report->context()['normalizedSpec']['sections'][0]['data']['title'] ?? '', 'Normalized aliased title' );
-			$malformed = cf_load_fixture( 'service-detail' );
-			unset( $malformed['post']['parent'] );
-			cf_replace_path_links( $malformed );
-			$malformed['sections'][3]['data']['items'] = 'not-an-array';
-			cf_assert( $pipeline->process( $malformed )->has_errors(), 'Malformed alias collection did not produce a report.' );
-		} finally {
-			if ( is_string( $path ) && file_exists( $path ) ) {
-				unlink( $path );
-			}
-		}
 	}
 );
 
@@ -555,6 +710,84 @@ $runner->test(
 		cf_assert_same( 'potolki/inner-hero', $parsed[0]['blockName'], 'Parsed first block' );
 		cf_assert_same( 'potolki/inner-content', $parsed[1]['blockName'], 'Parsed second block' );
 		cf_assert( true === $serializer->round_trip( $golden_tree, $content ), 'Serializer round-trip failed.' );
+	}
+);
+
+$runner->test(
+	'hero supports more than two lead paragraphs without changing two-paragraph output',
+	static function () use ( $adapter, $serializer ): void {
+		cf_assert( null !== $adapter, 'Adapter is unavailable.' );
+		$base_spec = cf_load_fixture( 'service-detail' );
+		$base_tree = $adapter->build( $base_spec, cf_adapter_context( $base_spec ) );
+		cf_assert_same( 0, count( $base_tree[0]->children() ), 'Two-paragraph hero must keep compact serialization' );
+		cf_assert( ! array_key_exists( 'hasLeadBlocks', $base_tree[0]->attrs() ), 'Two-paragraph hero unexpectedly opted into lead blocks.' );
+
+		$expanded_spec = $base_spec;
+		$expanded_spec['sections'][0]['data']['lead'][] = 'Третий абзац остаётся внутри первого экрана.';
+		$report = $adapter->validate( $expanded_spec, cf_adapter_context( $expanded_spec ) );
+		cf_assert( ! $report->has_errors(), 'Expanded hero validation failed: ' . implode( ', ', cf_issue_codes( $report ) ) );
+		$tree = $adapter->build( $expanded_spec, cf_adapter_context( $expanded_spec ) );
+		cf_assert_same( true, $tree[0]->attrs()['hasLeadBlocks'] ?? false, 'Expanded hero did not opt into lead blocks' );
+		cf_assert_same(
+			array( 'core/paragraph', 'core/paragraph', 'core/paragraph' ),
+			array_map( static fn( ContentFactory\Contract\BlockNode $node ): string => $node->name(), $tree[0]->children() ),
+			'Expanded hero paragraph children'
+		);
+		$content = $serializer->serialize( $tree );
+		cf_assert( true === $serializer->round_trip( $tree, $content ), 'Expanded hero serializer round-trip failed.' );
+		$html = do_blocks( $content );
+		preg_match( '#<div class="inner-hero__lead">(.*?)</div>#s', $html, $lead_match );
+		$lead_html = (string) ( $lead_match[1] ?? '' );
+		cf_assert_same( 3, substr_count( $lead_html, 'class="wp-block-paragraph"' ), 'Expanded hero rendered paragraph count' );
+		cf_assert( str_contains( $lead_html, 'Третий абзац остаётся внутри первого экрана.' ), 'Expanded hero lost the third paragraph during render.' );
+	}
+);
+
+$runner->test(
+	'golden fixtures match immutable Block Tree and post_content snapshots',
+	static function () use ( $adapter, $serializer ): void {
+		cf_assert( null !== $adapter, 'Adapter is unavailable.' );
+		foreach ( array( 'service-detail', 'service-category' ) as $fixture_name ) {
+			$spec     = cf_load_fixture( $fixture_name );
+			$output   = CF_Snapshot_Artifacts::output( $adapter, $serializer, $spec, CF_Snapshot_Artifacts::context( $adapter, $spec ) );
+			$blocks   = cf_load_json_file( __DIR__ . '/fixtures/expected/' . $fixture_name . '.blocks.json' );
+			$content  = (string) file_get_contents( __DIR__ . '/fixtures/expected/' . $fixture_name . '.post-content.html' );
+			cf_assert_same( $blocks, $output['blocks'], $fixture_name . ' exact Block Tree snapshot' );
+			cf_assert_same( rtrim( $content, "\r\n" ), $output['postContent'], $fixture_name . ' exact post_content snapshot' );
+		}
+	}
+);
+
+$runner->test(
+	'snapshot comparison detects attribute and innerHTML mutations',
+	static function () use ( $adapter, $serializer ): void {
+		$spec     = cf_load_fixture( 'service-detail' );
+		$output   = CF_Snapshot_Artifacts::output( $adapter, $serializer, $spec, CF_Snapshot_Artifacts::context( $adapter, $spec ) );
+		$expected = cf_load_json_file( __DIR__ . '/fixtures/expected/service-detail.blocks.json' );
+		$attribute_mutation = $output['blocks'];
+		$attribute_mutation[0]['attrs']['title'] .= ' mutation';
+		cf_assert( $expected !== $attribute_mutation, 'Attribute mutation did not break the snapshot.' );
+		$html_mutation = $output['blocks'];
+		$html_mutation[1]['innerHTML'] .= '<!-- mutation -->';
+		cf_assert( $expected !== $html_mutation, 'innerHTML mutation did not break the snapshot.' );
+	}
+);
+
+$runner->test(
+	'49-page regression corpus keeps exact Block Tree and post_content hashes',
+	static function () use ( $adapter, $serializer, $zip ): void {
+		$entries = $zip->import_file( __DIR__ . '/fixtures/regression-corpus/pagespec.zip' );
+		cf_assert( is_array( $entries ), 'Regression corpus ZIP could not be read.' );
+		$specs = array();
+		foreach ( $entries as $entry ) {
+			$data  = $entry['data'];
+			$pages = isset( $data['pages'] ) ? $data['pages'] : ( array_is_list( $data ) ? $data : array( $data ) );
+			array_push( $specs, ...$pages );
+		}
+		$expected = cf_load_json_file( __DIR__ . '/fixtures/regression-corpus/expected-hashes.json' );
+		cf_assert_same( 49, count( $specs ), 'Regression corpus PageSpec count' );
+		cf_assert_same( 49, (int) ( $expected['corpusCount'] ?? 0 ), 'Expected regression corpus count' );
+		cf_assert_same( $expected['pages'], CF_Snapshot_Artifacts::corpus_hashes( $adapter, $serializer, $specs ), 'Regression corpus hashes' );
 	}
 );
 
@@ -664,6 +897,51 @@ $runner->test(
 		$results = $batch->validate( array( $source, $target ) );
 		$source_result = array_values( array_filter( $results, static fn( array $row ): bool => 'cf-test-link-source' === $row['sourceId'] ) )[0];
 		cf_assert_issue( $source_result['report'], 'BATCH_LINK_TARGET_INCOMPATIBLE' );
+	}
+);
+
+$runner->test(
+	'atomic batch creates zero drafts when one PageSpec is incompatible',
+	static function () use ( $adapter, $hierarchy, $serializer ): void {
+		$admin = get_user_by( 'login', 'admin' );
+		cf_assert( $admin instanceof WP_User, 'Admin user is unavailable.' );
+		$original_user = get_current_user_id();
+		$suffix = strtolower( wp_generate_password( 8, false, false ) );
+		$valid_id   = 'cf-atomic-valid-' . $suffix;
+		$invalid_id = 'cf-atomic-invalid-' . $suffix;
+		try {
+			wp_set_current_user( $admin->ID );
+			$registry = new ContentFactory\Adapter\AdapterRegistry();
+			$registry->register( $adapter );
+			$pipeline = new ContentFactory\Service\ContentPipeline( $registry, new ContentFactory\Validation\CorePageSpecValidator(), $hierarchy, $serializer );
+			$drafts = new ContentFactory\WordPress\DraftManager( $pipeline, $registry, new ContentFactory\WordPress\HashManager(), new ContentFactory\WordPress\YoastAdapter() );
+			$batch  = new ContentFactory\Import\BatchRunner( $hierarchy, $pipeline, $drafts );
+
+			$valid = cf_load_fixture( 'service-detail' );
+			cf_replace_path_links( $valid );
+			$valid['sourceId']     = $valid_id;
+			$valid['post']['slug'] = $valid_id;
+			unset( $valid['post']['parent'] );
+			$invalid = $valid;
+			$invalid['sourceId']     = $invalid_id;
+			$invalid['post']['slug'] = $invalid_id;
+			$invalid['target']['siteKey'] = 'wrong-site';
+
+			$result = $batch->run( array( $valid, $invalid ), true );
+			cf_assert( is_array( $result ), 'Atomic batch returned a batch-level error.' );
+			cf_assert_same( 0, $result['counts']['created'] ?? -1, 'Atomic created count' );
+			cf_assert_same( 2, $result['counts']['failed'] ?? -1, 'Atomic failed count' );
+			cf_assert( null === $drafts->find_by_source_id( $valid_id ), 'Atomic validation failure created the compatible draft.' );
+			cf_assert( null === $drafts->find_by_source_id( $invalid_id ), 'Atomic validation failure created the incompatible draft.' );
+		} finally {
+			foreach ( array( $valid_id, $invalid_id ) as $source_id ) {
+				$posts = get_posts( array( 'post_type' => 'page', 'post_status' => 'any', 'meta_key' => '_content_factory_source_id', 'meta_value' => $source_id, 'fields' => 'ids', 'posts_per_page' => -1 ) );
+				foreach ( $posts as $post_id ) {
+					wp_delete_post( $post_id, true );
+				}
+			}
+			wp_set_current_user( $original_user );
+		}
 	}
 );
 
@@ -824,9 +1102,9 @@ $runner->test(
 		cf_assert( is_wp_error( $result ) && 422 === ( $result->get_error_data()['status'] ?? 0 ), 'Scalar batch item did not return structured 422.' );
 		$large = new WP_REST_Request( 'POST', '/' );
 		$large->set_header( 'content-type', 'application/json' );
-		$large->set_body( wp_json_encode( array( 'pages' => array_fill( 0, 101, cf_core_spec() ), 'confirmed' => true ) ) );
-		$limited = $controller->create_batch( $large );
-		cf_assert( is_wp_error( $limited ) && 413 === ( $limited->get_error_data()['status'] ?? 0 ), 'Oversized PageSpec count was accepted.' );
+		$large->set_body( wp_json_encode( array( 'pages' => array_fill( 0, 101, cf_core_spec() ), 'confirmed' => false ) ) );
+		$unlimited = $controller->create_batch( $large );
+		cf_assert( ! is_wp_error( $unlimited ) || 'batch_page_limit' !== $unlimited->get_error_code(), 'REST still limits the PageSpec count.' );
 		cf_with_zip(
 			array( 'page.json' => wp_json_encode( cf_core_spec() ) ),
 			static function ( string $path ) use ( $controller ): void {
@@ -845,10 +1123,55 @@ $runner->test(
 				$unconfirmed = $controller->create_batch( $upload );
 				cf_assert( is_wp_error( $unconfirmed ) && 'confirmation_required' === $unconfirmed->get_error_code(), 'ZIP batch bypassed confirmation.' );
 				$upload->set_param( 'confirmed', 'true' );
+				$upload->set_param( 'validatedHash', 'sha256:' . str_repeat( '0', 64 ) );
+				$changed = $controller->create_batch( $upload );
+				cf_assert( is_wp_error( $changed ) && 'package_changed' === $changed->get_error_code(), 'Import accepted a file that differed from the validated package hash.' );
+				$upload->set_param( 'validatedHash', '' );
+				$upload->set_param( 'confirmed', 'true' );
 				$confirmed = $controller->create_batch( $upload );
 				cf_assert( is_array( $confirmed ) && 1 === ( $confirmed['counts']['failed'] ?? 0 ), 'Confirmed ZIP batch was not parsed and validated.' );
 			}
 		);
+	}
+);
+
+$runner->test(
+	'REST summary validates the 49-page ZIP without internal build data',
+	static function () use ( $adapter, $hierarchy, $serializer, $json, $zip ): void {
+		$registry = new ContentFactory\Adapter\AdapterRegistry();
+		$registry->register( $adapter );
+		$pipeline = new ContentFactory\Service\ContentPipeline( $registry, new ContentFactory\Validation\CorePageSpecValidator(), $hierarchy, $serializer );
+		$drafts = new ContentFactory\WordPress\DraftManager( $pipeline, $registry, new ContentFactory\WordPress\HashManager(), new ContentFactory\WordPress\YoastAdapter() );
+		$batch = new ContentFactory\Import\BatchRunner( $hierarchy, $pipeline, $drafts );
+		$controller = new ContentFactory\Rest\RestController( $registry, $pipeline, $drafts, $batch, new ContentFactory\WordPress\PublishManager( $pipeline, $registry, new ContentFactory\WordPress\HashManager() ), $json, $zip );
+		$path = __DIR__ . '/fixtures/regression-corpus/pagespec.zip';
+		$request = new WP_REST_Request( 'POST', '/' );
+		$request->set_param( 'detail', 'summary' );
+		$request->set_file_params(
+			array(
+				'file' => array(
+					'name' => 'pagespec.zip',
+					'type' => 'application/zip',
+					'tmp_name' => $path,
+					'error' => 0,
+					'size' => filesize( $path ),
+				),
+			)
+		);
+		$response = $controller->validate( $request );
+		cf_assert( $response instanceof WP_REST_Response, 'Summary validation did not return WP_REST_Response.' );
+		$data = $response->get_data();
+		cf_assert_same( 'summary', $data['detail'] ?? '', 'Validation detail mode' );
+		cf_assert_same( 49, $data['counts']['total'] ?? 0, 'Summary corpus count' );
+		cf_assert( is_string( $data['packageHash'] ?? null ) && str_starts_with( $data['packageHash'], 'sha256:' ), 'Summary package hash is missing.' );
+		cf_assert( strlen( wp_json_encode( $data ) ) < 200000, 'Summary response exceeds the 200 kB regression limit.' );
+		foreach ( $data['results'] as $row ) {
+			cf_assert( ! array_key_exists( 'postContent', $row ), 'Summary leaked postContent.' );
+			cf_assert( ! array_key_exists( 'plannedBlockTree', $row ), 'Summary leaked plannedBlockTree.' );
+			cf_assert( ! array_key_exists( 'normalizedSpec', $row ), 'Summary leaked normalizedSpec.' );
+			cf_assert( in_array( $row['plannedAction'] ?? '', array( 'create', 'update_draft', 'no_change', 'blocked_published', 'conflict' ), true ), 'Summary has an unknown planned action.' );
+			cf_assert( '' !== ( $row['profileId'] ?? '' ) && '' !== ( $row['manifestHash'] ?? '' ), 'Summary profile identity is incomplete.' );
+		}
 	}
 );
 
@@ -968,6 +1291,9 @@ $runner->test(
 				new ContentFactory\WordPress\YoastAdapter(),
 				new ContentFactory\Log\OperationLogger()
 			);
+			$preflight = $pipeline->process( $spec );
+			cf_assert( ! $preflight->has_errors(), 'Planner preflight failed.' );
+			cf_assert_same( 'create', $drafts->plan( $preflight->context()['normalizedSpec'] ?? $spec, $preflight->context() )['action'] ?? '', 'Planner action before initial import' );
 
 			$created = $drafts->import( $spec );
 			cf_assert( ! is_wp_error( $created ), 'Draft import failed: ' . ( is_wp_error( $created ) ? $created->get_error_message() : '' ) );
@@ -976,15 +1302,22 @@ $runner->test(
 			cf_assert_same( 'created', $created['action'] ?? null, 'Initial import action' );
 			cf_assert_same( 'draft', get_post_status( $post_id ), 'Imported post status' );
 			cf_assert_same( $source_id, get_post_meta( $post_id, '_content_factory_source_id', true ), 'Stored sourceId' );
+			cf_assert_same( $adapter->compiled_profile()->defaults_version(), get_post_meta( $post_id, '_content_factory_site_defaults_version', true ), 'Stored site defaults version' );
 			$stored_spec = json_decode( (string) get_post_meta( $post_id, '_content_factory_source_spec', true ), true );
 			cf_assert( is_array( $stored_spec ), 'Stored source PageSpec JSON was corrupted.' );
 			$stored_cta = array_values( array_filter( $stored_spec['sections'], static fn( array $section ): bool => 'cta' === ( $section['type'] ?? '' ) ) )[0];
 			cf_assert_same( $expected_cta_text, $stored_cta['data']['text'] ?? '', 'Stored PageSpec preserves newlines' );
+			cf_assert_same( 'no_change', $drafts->plan( $created['report']->context()['normalizedSpec'] ?? $spec, $created['report']->context() )['action'] ?? '', 'Planner action after initial import' );
 
 			$again = $drafts->import( $spec );
 			cf_assert( ! is_wp_error( $again ), 'Repeat import failed.' );
 			cf_assert_same( 'no_change', $again['action'] ?? null, 'Repeat import action' );
 			cf_assert_same( $post_id, (int) ( $again['postId'] ?? 0 ), 'Repeat import post ID' );
+
+			delete_post_meta( $post_id, '_content_factory_site_defaults_version' );
+			$profile_drift = $pipeline->process_result( $spec );
+			cf_assert_same( 'update_draft', $drafts->plan( $profile_drift->normalized_spec(), $profile_drift->report()->context(), $profile_drift->profile() )['action'] ?? '', 'Planner action for profile metadata drift' );
+			update_post_meta( $post_id, '_content_factory_site_defaults_version', $adapter->compiled_profile()->defaults_version() );
 
 			$guard = new ContentFactory\WordPress\PublishGuard();
 			$blocked_data = $guard->guard_publish( array( 'post_status' => 'publish' ), array( 'ID' => $post_id ) );
@@ -993,6 +1326,8 @@ $runner->test(
 			cf_assert_same( 'publish', $regular_data['post_status'], 'Unmanaged publish remains untouched' );
 
 			update_post_meta( $post_id, '_yoast_wpseo_title', 'tampered SEO' );
+			$drift_report = $pipeline->process( $spec );
+			cf_assert_same( 'update_draft', $drafts->plan( $drift_report->context()['normalizedSpec'] ?? $spec, $drift_report->context() )['action'] ?? '', 'Planner action for a drifted draft' );
 			$repaired = $drafts->import( $spec );
 			cf_assert( ! is_wp_error( $repaired ), 'Drift repair import failed.' );
 			cf_assert_same( 'updated', $repaired['action'] ?? null, 'Drifted draft must be updated instead of no_change' );
@@ -1053,6 +1388,7 @@ $runner->test(
 			$published = $publisher->publish_selected( array( $source_id ), true );
 			cf_assert( is_array( $published ) && 'published' === ( $published[0]['status'] ?? '' ), 'Publish Manager did not publish the valid draft.' );
 			cf_assert_same( 'publish', get_post_status( $post_id ), 'Published post status' );
+			cf_assert_same( 'blocked_published', $drafts->plan( $created['report']->context()['normalizedSpec'] ?? $spec, $created['report']->context() )['action'] ?? '', 'Planner action for a published managed page' );
 			$conflict = $drafts->import( $spec );
 			cf_assert( is_wp_error( $conflict ) && 'published_conflict' === $conflict->get_error_code(), 'Published managed page was not protected from reimport.' );
 		} finally {

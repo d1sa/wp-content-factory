@@ -1,357 +1,66 @@
-# Конвертация готовых SEO-статей в PageSpec
+# Markdown to PageSpec 1.1 conversion
 
-Этот регламент предназначен для уже написанных Markdown-материалов. Он не
-описывает генерацию текста. Задача агента — без выдуманных фактов преобразовать
-редакционную структуру в семантический PageSpec активного профиля, проверить всю
-партию и создать черновики для ручного просмотра.
+## Input contract
 
-## 1. Что является контентом, а что метаданными
+Fetch the current Contract Bundle immediately before conversion. Build every page against that exact response:
 
-В приложенном наборе `SEO pages` найдено 49 материалов: 8 страниц-каталогов и
-41 дочерняя страница. У всех есть SEO-настройки и FAQ; каталоги содержат карточки,
-а большинство дочерних страниц — процесс и финальную форму.
+```text
+GET /wp-json/content-factory/v1/contract?siteKey=potolkinaveka40&profileId=potolki-inner
+```
 
-Для этого набора заранее действуют следующие решения:
+Set:
 
-- UUID в имени файла является `external_id` и основой стабильного `sourceId`.
-- Вложенность каталогов на диске задаёт parent/child graph; отображаемые названия
-  используются только как контроль.
-- Все 8 файлов, у которых есть дочерний каталог, относятся к
-  `service-category`; остальные 41 — к `service-detail`.
-- Production canonical из источника нельзя использовать при валидации на
-  `localhost`.
-- Нижние ссылки экспорта на `.md` нужны только для проверки graph и не входят в
-  публичный текст.
-- В текущем manifest есть очевидные наборы изображений не для всех 8 каталогов.
-  В частности, нельзя автоматически считать общий `services-*` asset точным
-  изображением каждой дочерней карточки. Недостающие карточные изображения нужно
-  добавить в manifest/тему или отметить как блокирующий `ASSET_GAP`.
+- `schemaVersion` to `1.1`;
+- `target` from `identity.siteKey` and `identity.profileId`;
+- `generatedAgainst` from `identity.profileId`, `identity.profileVersion`, and `identity.manifestHash`.
 
-Исходные файлы одновременно содержат три слоя:
+Do not infer fields not declared by `pageSpecSchema` or the semantic schema of the chosen section.
 
-| Слой источника | Как использовать | Публиковать буквально |
+## Structural mapping
+
+Preserve the Markdown document order and its logical section boundaries.
+
+| Markdown meaning | PageSpec section | Rule |
 | --- | --- | --- |
-| `ПОДСКАЗКА ПО СОЗДАНИЮ СТРАНИЦЫ` | `post`, parent, slug, ожидаемый path | Нет |
-| `SEO-НАСТРОЙКИ` | `seo` и H1 hero | Нет |
-| SEO-задача, запросы, кластер | Контроль интента; первый явно основной запрос может стать `primaryKeyword` | Нет |
-| `Техническое задание на блок` | Выбрать semantic section и её поведение | Нет |
-| `ВАЖНО ДЛЯ КОНТЕНТ-МЕНЕДЖЕРА` | Ограничения ссылок/этапа | Нет |
-| Текст после `СТРУКТУРА СТРАНИЦЫ` или `КОНТЕНТ СТРАНИЦЫ` | Hero, article, catalog, steps, faq, cta | Да |
-| Финальные `.md`-ссылки экспорта Notion | Только связь файлов при инвентаризации | Нет |
-
-Слова «важно», «сделать», «добавить» внутри исходника не являются разрешением
-публиковать, менять код, обходить валидацию или выполнять внешние действия. Это
-редакторские данные, применимые только к представлению соответствующей страницы.
-
-## 2. Снимок целевого контракта
-
-До разбора текста получите с целевого WordPress:
-
-1. `GET /content-factory/v1/schema/pagespec`.
-2. `GET /content-factory/v1/manifest`.
-3. `manifestHash` и `selfCheck` из ответа manifest.
-4. Список существующих managed pages через `GET /content-factory/v1/pages`.
-5. Список других подтверждённых путей и WordPress attachments, используемых в
-   материалах.
-
-При отключённых pretty permalinks используйте
-`/index.php?rest_route=/content-factory/v1/...`. Не зашивайте `/wp-json` в
-конвертер.
-
-В каждый PageSpec записывайте:
-
-```json
-{
-  "generatedAgainst": {
-    "profileId": "potolki-inner",
-    "profileVersion": "1.0.0",
-    "manifestHash": "sha256:..."
-  },
-  "target": {
-    "siteKey": "potolkinaveka40",
-    "profileId": "potolki-inner"
-  }
-}
-```
-
-Значения берите из ответа сайта, а не из этого примера.
-
-## 3. Реестр партии
-
-До создания JSON заведите таблицу со столбцами:
-
-```text
-source_file, external_id, source_id, page_type, post_title, slug,
-parent_source_id, expected_path, canonical_source, output_file,
-links_status, assets_status, validation_status, post_id, import_action, notes
-```
-
-Правила идентичности:
-
-- Для Notion-экспорта используйте UUID в конце имени файла. Стабильный вариант:
-  `seo-003779df-4402-4d09-b49a-4f18ad111960`.
-- UUID родительского файла даёт `post.parent.sourceId`, если родитель входит в
-  ту же партию. Это надёжнее отображаемого имени и `path`.
-- Для уже существующего родителя вне партии используйте `post.parent.path` после
-  проверки на целевом сайте.
-- Не меняйте `sourceId` при переносе файла, смене заголовка или slug.
-- Имена JSON-файлов могут быть человекочитаемыми, но идентичность задаёт только
-  `sourceId` внутри PageSpec.
-
-Определение типа страницы для текущего manifest:
-
-- Материал, у которого есть дочерний каталог карточек, — `service-category`.
-- Конечная посадочная страница — `service-detail`.
-- Корневая `/uslugi/` также является `service-category`.
-- Если семантика не укладывается в эти типы, зафиксируйте `ADAPTER_GAP`; не
-  называйте произвольную страницу ближайшим типом ради прохождения валидации.
-
-## 4. Карта полей
-
-| Источник | PageSpec | Правило |
-| --- | --- | --- |
-| `Название страницы в WordPress` | `post.title` | Не подменять SEO Title |
-| `Slug` | `post.slug` | Нижний ASCII, цифры и дефисы; без `/` |
-| `Родитель...` / иерархия файлов | `post.parent` | Предпочитать `sourceId` внутри batch |
-| Название родительского кластера | `post.categoryLabel` | Короткая метка, без хлебной цепочки |
-| `Title` | `seo.title` | Переносить написанное значение |
-| `Description` | `seo.description` | Переносить написанное значение |
-| Явно основной запрос | `seo.primaryKeyword` | Если приоритет не задан — поле пропустить; текущий Yoast mapping это поле не сохраняет |
-| `Canonical` | `seo.canonical` | Только как проверяемое утверждение о target URL |
-| `H1` | первый `hero.data.title` | На странице должен остаться один H1 |
-| 1–2 вводных абзаца после контентного H1 | `hero.data.lead` | Массив из одной или двух строк |
-| Главная кнопка | `hero.data.primaryAction` | Обычно anchor на финальный CTA |
-| Основная сетка дочерних карточек | `catalog` | Ровно один catalog в текущем профиле |
-| Тематические главы | `article` | До 10; см. группировку ниже |
-| Нумерованный процесс | `steps` | 2–8 элементов |
-| Явный раздел `Частые вопросы` | `faq` | 3–10 уникальных пар вопрос/ответ |
-| Финальная форма | `cta` с `variant: form` | У кнопки только label, без link |
-| Финальный CTA с двумя переходами | `cta` с `variant: links` | Обе ссылки должны разрешаться |
-| Минимальная ссылка на родителя | auto parent-link | Обычно отдельную секцию не добавлять |
-
-`Canonical` требует особой осторожности. Значение из статьи для production-домена
-не совпадёт с permalink локального `localhost` и закономерно даст ошибку. Для
-локальной проверки исходный canonical храните в реестре, а `seo.canonical`
-опускайте. На production включайте его только если схема, host, port и полный path
-точно совпадают с ожидаемым permalink.
-
-## 5. Разбиение на semantic sections
-
-### Hero
-
-- Hero всегда первый.
-- `title` берите из поля H1, а не из имени файла.
-- Повторный контентный H1 после маркера структуры не создаёт article: это тот же
-  H1, уже перенесённый в hero.
-- В `lead` помещается максимум два абзаца. Остальные вводные абзацы переходят в
-  первый article без перефразирования.
-- `primaryAction` должен вести в существующий CTA этой PageSpec через
-  `{ "kind": "anchor", "anchor": "request" }`, если источником задана заявка.
-- Изображение берите из asset plan. При отсутствии точного изображения можно
-  опустить hero image только если активный manifest предоставляет корректный
-  fallback; предупреждение `ASSET_FALLBACK` необходимо записать в отчёт.
-
-### Article
-
-После контентного H1 заголовки источника интерпретируются семантически, а не по
-их сырому Markdown-уровню:
-
-- крупная самостоятельная тема становится `article.data.title`;
-- подзаголовок внутри темы становится body node `heading` уровня 3;
-- ещё один уровень вложенности становится `heading` уровня 4;
-- абзац становится `paragraph`;
-- список становится `list` со `style: unordered` или `ordered`;
-- связанная кнопка с подтверждённой ссылкой становится `buttons`.
-
-Текущий профиль допускает не более 10 `article`. Если исходник длиннее:
-
-1. Сохраняйте исходный порядок.
-2. Объединяйте только соседние логически связанные главы.
-3. Название объединённой темы становится `article.data.title`.
-4. Исходные названия глав сохраняйте как H3 внутри body.
-5. Не сокращайте абзацы и списки только ради количества секций.
-
-Raw HTML, fenced code и Markdown images запрещены. Внутри строк разрешены
-простое `**strong**`, `*emphasis*` и Markdown-ссылки, которые проходят link
-resolver. Заголовки внутри article могут иметь только уровни 3 или 4.
-
-### Catalog
-
-Для страниц-каталогов основной блок вида «выберите…» преобразуйте в единственный
-`catalog`. Каждая карточка получает `title`, `text`, `action` и `image`.
-
-- Вся карточка в теме уже может быть кликабельной; не дублируйте действие в body.
-- Текст и заголовок карточки не должны содержать вложенные ссылки.
-- Каждой карточке обязательно изображение. Если точного `themeAsset` или
-  attachment нет, это `ASSET_GAP`, блокирующий импорт.
-- Карточка на страницу того же batch должна использовать link `kind: page` и
-  `sourceId`. Это позволяет валидировать зависимость до создания permalink.
-- Вторичные карточки перелинковки, CTA цены и похожие группы не превращайте во
-  второй catalog: перенесите их в article как текст и `buttons` либо отметьте
-  `ADAPTER_GAP`, если дизайн требует отдельной карточной секции.
-
-Пример ссылки на дочернюю страницу партии:
-
-```json
-{
-  "label": "Подробнее о матовых потолках",
-  "link": {
-    "kind": "page",
-    "sourceId": "seo-003779df-4402-4d09-b49a-4f18ad111960"
-  }
-}
-```
-
-### Steps
-
-Явный раздел «Как проходит...» с нумерованными подзаголовками становится одной
-секцией `steps`. Уберите номер из `title`: адаптер проставляет номер сам.
-
-- Допустимо 2–8 шагов.
-- Текст шага переносите полностью.
-- Если шагов больше восьми, объединяйте только последовательные операции без
-  потери смысла и записывайте это решение в отчёт.
-- Ненумерованный список преимуществ не является steps.
-
-### FAQ
-
-Только пары внутри явного раздела FAQ становятся `faq.items`. Вопросительные
-заголовки в основном тексте не переносите в FAQ автоматически.
-
-- Нужно 3–10 уникальных вопросов.
-- Ответ переносится полностью как одна строка с допустимым inline formatting.
-- При количестве больше 10 оставьте 10 приоритетных вопросов в FAQ, а остальные
-  сохраните в article «Дополнительные вопросы»; зафиксируйте преобразование.
-- Если в источнике меньше трёх вопросов, не сочиняйте недостающие. Это
-  `CONTENT_GAP` или повод создать новый page type с другим контрактом.
-
-### CTA и родительская ссылка
-
-Для блока с формой используйте:
-
-```json
-{
-  "id": "request",
-  "type": "cta",
-  "data": {
-    "variant": "form",
-    "title": "...",
-    "text": "...",
-    "primaryAction": { "label": "Получить расчёт" }
-  }
-}
-```
-
-Поле источника «Ссылка / действие формы» не переносится в form CTA: текущий
-mapping делегирует поведение формы блоку темы и запрещает URL у основной кнопки.
-Если сайт действительно должен отправлять форму иначе, требуется новая привязка,
-а не скрытая ссылка в PageSpec.
-
-Для CTA с двумя обычными кнопками используйте `variant: links` и обязательно
-передавайте `primaryAction.link` и `secondaryAction.link`. CTA всегда последний.
-При наличии `post.parent` текущий адаптер автоматически добавляет parent-link
-перед CTA. Ручная секция нужна только для подтверждённого нестандартного текста.
-
-## 6. Ссылки и изображения
-
-Допустимые link descriptors:
-
-```text
-anchor   -> { kind, anchor }
-page     -> { kind, sourceId }
-path     -> { kind, path }
-external -> { kind, url, newTab }
-tel      -> { kind, value }
-mailto   -> { kind, value }
-```
-
-Правила:
-
-- Внутренний `path` без query/anchor заканчивается `/`.
-- `page` используется для managed page или совместимой страницы того же batch.
-- `path` используется только после подтверждения существования target.
-- До публикации дочерней страницы карточка либо импортируется вместе с ней через
-  `page/sourceId`, либо не получает действия. Поскольку catalog action обязателен,
-  одиночный импорт такой карточки блокируется.
-- Экспортные относительные ссылки на `.md` не являются web-ссылками и удаляются
-  после того, как по ним построен реестр зависимостей.
-- Не заменяйте отсутствующий URL на `#`.
-
-Asset plan составьте отдельно до PageSpec. Для каждого изображения зафиксируйте:
-
-```text
-section/card, source, ref|id|url, alt, verified_on_target
-```
-
-`themeAsset.ref` обязан присутствовать в активном manifest и физически
-существовать. `mediaId`/`mediaUrl` обязаны быть image attachment целевого сайта.
-Внешние изображения для `potolki-inner` запрещены. Alt описывает содержимое
-изображения; декоративному изображению разрешён пустой alt только там, где это
-разрешает manifest.
-
-## 7. Валидация, импорт и проверка
-
-Рекомендуемые переменные для REST-команд:
-
-```sh
-WP_URL='http://localhost:8080'
-WP_USER='admin'
-WP_APP_PASSWORD='set-outside-repository'
-```
-
-Application Password предпочтительнее обычного пароля администратора. Не
-коммитьте значения переменных.
-
-Сначала валидируйте envelope без побочных эффектов:
-
-```sh
-curl --user "$WP_USER:$WP_APP_PASSWORD" \
-  -H 'Content-Type: application/json' \
-  --data-binary @batch.json \
-  "$WP_URL/index.php?rest_route=/content-factory/v1/validate"
-```
-
-Критерий перехода к импорту: `incompatible = 0`, все warnings разобраны, ссылки
-и assets подтверждены. Затем после явного подтверждения:
-
-```sh
-curl --user "$WP_USER:$WP_APP_PASSWORD" \
-  -H 'Content-Type: application/json' \
-  --data-binary @batch-confirmed.json \
-  "$WP_URL/index.php?rest_route=/content-factory/v1/pages/batch"
-```
-
-`batch-confirmed.json` содержит `{ "pages": [...], "confirmed": true }`.
-Предел — 100 PageSpec; каждый JSON-документ, включая batch-envelope в REST body,
-не больше 1 MiB. Для связанной партии большего размера `/pages/batch` принимает
-тот же безопасный multipart ZIP, что и `/validate`, с полем `confirmed=true`:
-до 100 отдельных JSON (каждый до 1 MiB) и до 20 MiB распакованных данных.
-
-До импорта измерьте размер минифицированного envelope. Если связанный graph не
-помещается в 1 MiB, делить его можно только на партии, чьи родители и link targets
-уже существуют либо находятся в той же партии. Если это невозможно, используйте
-подтверждённый multipart ZIP batch; не разбивайте graph так, чтобы временно
-появились 404 или неразрешимые родители.
-
-Повторный неизменённый импорт должен вернуть `no_change`. Плагин не
-перезаписывает опубликованную managed page.
-
-После импорта для каждого черновика проверьте:
-
-- правильные title, slug, parent и полный permalink;
-- один H1, порядок semantic sections и TOC;
-- отсутствие служебных заметок источника в публичном тексте;
-- полноту всех абзацев, списков, FAQ и шагов;
-- отсутствие 404, неверных anchors и внешних ссылок без необходимости;
-- изображения, alt и отсутствие повторяющегося нерелевантного fallback;
-- форму и обе CTA-кнопки;
-- Yoast Title/Description и соответствие canonical ожидаемому permalink;
-- desktop и mobile Preview, отсутствие invalid/recovery blocks;
-- успешный `/pages/{sourceId}/revalidate`.
-
-Публикация выполняется только отдельной командой пользователя после этого списка.
-
-Текущий `YoastAdapter` записывает только `_yoast_wpseo_title` и
-`_yoast_wpseo_metadesc`. `primaryKeyword` сохраняется в исходном PageSpec как
-редакционные данные, а `canonical` проверяет ожидаемый permalink; они не должны
-считаться сохранёнными полями Yoast без отдельного расширения адаптера и тестов.
+| H1 and content before the next major heading | `hero` | `lead` contains every introductory paragraph in order |
+| Explanatory thematic section | `article` | Keep its heading and body nodes as one section |
+| Collection of linked service/product cards | `catalog` | Each source card becomes one item |
+| Ordered process or sequence | `steps` | Each source step becomes one item |
+| Explicit questions and answers | `faq` | Each source Q/A pair becomes one item |
+| Final or contextual conversion block | `cta` | Use the source position; do not force it to the end |
+| Explicit navigation to the parent | `parent-link` | Add only when the Markdown contains it; automatic parent navigation is profile behavior |
+
+Use `article` for a section that does not semantically fit a specialized block. Do not merge adjacent headings, regroup chapters, truncate lists, or impose conversion limits. Limits exist only when explicitly present in the current Contract Bundle schema.
+
+## Hero and actions
+
+`hero.data.lead` is an array containing all introductory paragraphs after H1 up to the next major heading. It is not limited to one or two paragraphs.
+
+The primary form action should resolve to `/forma-obratnoj-svyaz`. The theme JavaScript intercepts this URL and opens the modal. Use a path link descriptor, not an anchor invented by the converter.
+
+## Article body
+
+Represent article content with supported structured nodes:
+
+- `paragraph` with inline text;
+- `heading` using profile-allowed levels;
+- `list` with ordered/unordered style and source items;
+- `buttons` with explicit action descriptors.
+
+Preserve paragraph, heading, list, and button order. Inline emphasis and links use the supported text syntax; raw HTML, fenced code, and Markdown image syntax are rejected.
+
+## Links and assets
+
+Use typed link descriptors: `page`, `path`, `anchor`, `external`, `tel`, or `mailto`. Prefer `page.sourceId` for another page in the same package and `path` for an existing site route. Every anchor must match a section ID in the same page.
+
+Use only asset descriptors and references advertised by the current contract. Catalog cards require images. Hero may use the profile's declared theme-asset fallback. Do not add arbitrary external images when the policy forbids them.
+
+## Package workflow
+
+Output one PageSpec object, a `{ "pages": [...] }` envelope, or a ZIP containing JSON files. Validate the complete package first. Resolve duplicate source IDs, paths, broken dependencies, unknown assets, and all blocking issues before confirmation. Import is atomic and always creates/updates drafts only.
+
+## Agent prompt
+
+A concise conversion request can be:
+
+> Fetch the current Content Factory Contract Bundle for `potolkinaveka40/potolki-inner`. Convert the supplied Markdown articles to strict PageSpec 1.1. Preserve heading-to-heading section boundaries and source order; do not merge or truncate sections/items. Map specialized content only when its meaning matches catalog, steps, FAQ, CTA, or parent-link, otherwise use article. Put all text after H1 and before the next major heading into hero.lead. Use `/forma-obratnoj-svyaz` for the main modal-form action. Copy target and generatedAgainst from the same Contract Bundle, validate the complete package, and return JSON/ZIP without publishing.

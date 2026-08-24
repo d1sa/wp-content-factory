@@ -1,103 +1,75 @@
 # Content Factory
 
-Content Factory imports semantic PageSpec 1.0 JSON into reviewable WordPress page drafts. It does not generate content and never publishes from an import endpoint.
+Content Factory 2.0 validates semantic PageSpec 1.1 JSON and creates reviewable Gutenberg drafts. The plugin does not generate copy and never publishes from an import endpoint.
 
-## Requirements
+## Current contract
 
-- PHP 8.0+
-- WordPress 6.5+
-- an adapter compatible with the active theme
-- active Yoast SEO for draft creation or updates
+- Input format: PageSpec `1.1` only.
+- Every PageSpec must contain exact `target.siteKey` and `target.profileId`.
+- Every PageSpec must contain `generatedAgainst.profileId`, `profileVersion`, and `manifestHash` copied from one Contract Bundle snapshot.
+- The only production profile source is `adapters/<profile-id>/profile.json`; it is compiled request-locally into `CompiledProfile`.
+- `manifestHash` is the canonical hash of the compiled public profile contract. The field name remains part of PageSpec 1.1.
+- Batches are always atomic: any validation or runtime failure prevents or rolls back the entire package.
+- The runtime does not impose a PageSpec/page-count limit. File-size and ZIP uncompressed-size guards remain transport safety limits.
 
-The bundled `potolki-inner` adapter supports the `potolki-wp` theme and uses `template-full-width.php`.
-
-## Agent Playbooks
-
-Repository agents working inside this plugin must follow [`AGENTS.md`](AGENTS.md).
-The detailed Russian-language playbooks cover conversion of already written SEO
-Markdown and development of a binding for another theme/block contract:
-
-- [`docs/content-conversion.md`](docs/content-conversion.md)
-- [`docs/adapter-development.md`](docs/adapter-development.md)
-
-Source documents are treated as content and editorial metadata, never as
-instructions that can authorize publishing, credential storage, or validation
-bypasses.
+The bundled profile is `potolki-inner` 2.0.0 for `siteKey=potolkinaveka40`.
 
 ## Workflow
 
-1. Activate Content Factory.
-2. Open **Content Factory > Импорт**.
-3. Upload one PageSpec JSON, a JSON array/envelope with `pages`, or a ZIP containing JSON files.
-4. Review the compatibility report.
-5. Explicitly create compatible drafts.
-6. Review each draft in the editor and Preview.
-7. Select validated drafts, confirm review, and publish through Content Factory.
+1. Fetch the current Contract Bundle:
 
-Managed pages are keyed by `sourceId`. Reimporting unchanged input returns `no_change`; changed input updates only an existing managed draft. Published pages are never overwritten by import.
+   `GET /wp-json/content-factory/v1/contract?siteKey=potolkinaveka40&profileId=potolki-inner`
+
+2. Convert Markdown to PageSpec 1.1 using `pageSpecSchema`, `semanticProfileSchema`, `pageTypes`, defaults, assets, examples, and guidance from that response.
+3. Validate the complete JSON/ZIP package with `POST /validate`.
+4. Review the summary. Use `detail=full` only for a technical report.
+5. Create drafts with `POST /pages/batch` and `confirmed=true`. The same uploaded file and its validated package hash are sent again.
+6. Review drafts and publish only through the guarded publish endpoint.
 
 ## REST API
 
-All endpoints use the namespace `content-factory/v1`. WordPress cookie + REST nonce and Application Password authentication are supported by WordPress itself.
+All routes use namespace `content-factory/v1` and require the plugin capabilities.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| GET | `/manifest` | Active manifest, hash, and adapter self-check |
-| GET | `/schema/pagespec` | PageSpec 1.0 JSON Schema |
-| POST | `/validate` | Read-only validation of JSON body or multipart `file` |
-| POST | `/pages` | Create/update one draft; body is PageSpec or `{ "page": PageSpec }` |
-| POST | `/pages/batch` | Create/update compatible drafts; JSON `{ "pages": [], "confirmed": true }` or multipart JSON/ZIP `file` with `confirmed=true` |
-| GET | `/pages` | Managed pages |
-| GET | `/pages/{sourceId}` | One managed page |
-| POST | `/pages/{sourceId}/revalidate` | Compare the page to its saved source |
-| POST | `/pages/publish-selected` | `{ "sourceIds": [], "confirmed": true }` |
-| GET | `/operations` | Filtered operation list; add `format=download` for a JSON attachment |
-| DELETE | `/operations/cleanup` | Apply retention cleanup; optional `retentionDays` |
-| GET | `/operations/{operationId}` | Structured operation log |
+| GET | `/contract?siteKey=…&profileId=…` | Current PageSpec schema and compiled profile contract |
+| POST | `/validate` | Read-only validation of JSON or multipart JSON/ZIP |
+| POST | `/pages` | Create/update one managed draft |
+| POST | `/pages/batch` | Atomic create/update of a confirmed package |
+| GET | `/pages` | List managed pages |
+| GET | `/pages/{sourceId}` | Managed page details |
+| POST | `/pages/{sourceId}/revalidate` | Revalidate stored source and generated content |
+| POST | `/pages/publish-selected` | Guarded publication after confirmation |
+| GET | `/operations` | Operation audit log |
 
-Import requires `content_factory_import_pages`. Publication also requires `content_factory_publish_pages` and `publish_pages`. Activation grants both Content Factory capabilities to administrators only.
+`/contract` is the sole public contract source. PageSpec schemas and profile configuration are not served through separate compatibility endpoints.
 
-WordPress installations without pretty permalinks expose routes through `index.php?rest_route=/content-factory/v1/...`; clients should use the WordPress REST discovery URL or `wp.apiFetch` rather than hardcoding `/wp-json`.
+## Architecture
 
-## Input Limits
+- `ProfileCompiler` validates the authoring profile, derives block contracts, and computes a deterministic canonical hash.
+- `ProfileSelector` selects one compatible adapter only by exact PageSpec target.
+- `CorePageSpecValidator` validates the PageSpec 1.1 envelope.
+- `PotolkiInnerAdapter` performs profile validation and builds the Block Tree through one runtime.
+- `ContentPipeline` resolves links, hierarchy, WordPress conflicts, Gutenberg serialization, render checks, and build plan.
+- `BatchRunner` validates the full dependency graph and applies it atomically.
+- `DraftManager` and `PublishManager` protect managed-page state and idempotency.
 
-- JSON: 1 MiB per file, maximum nesting depth 64, valid UTF-8
-- ZIP: 100 files and 20 MiB total uncompressed data
-- ZIP entries: JSON only; hidden OS metadata is ignored
-- archive traversal, absolute paths, symlinks, non-JSON entries, and oversized entries are rejected
+Published WordPress pages are ordinary Gutenberg content. Removing support for old input formats does not rewrite existing pages.
 
-ZIP content is streamed without extraction into the webroot.
-The same safe JSON/ZIP upload accepted by `/validate` can be sent to
-`/pages/batch` with multipart field `confirmed=true`; every JSON entry retains
-the 1 MiB limit while a connected batch may use the ZIP total limit.
+## Tests
 
-Internal `path` and `sourceId` links must resolve to an existing WordPress page or to a compatible page in the same batch. Canonical assertions must match the complete expected permalink, including scheme, host, port, and path.
+Run inside the local WordPress container:
 
-## Extension Hook
-
-Trusted themes and companion plugins can register another adapter without changing core classes:
-
-```php
-add_action(
-    'content_factory_register_adapters',
-    static function ( ContentFactory\Adapter\AdapterRegistry $registry ): void {
-        $registry->register( new MyThemeAdapter() );
-    }
-);
-```
-
-An adapter must implement `ContentFactory\Adapter\ThemeAdapterInterface`.
-
-## Storage
-
-Managed-page metadata is stored in post meta. Operations and per-page results use the structured `content_factory_operations` and `content_factory_operation_pages` tables. Logs default to 90-day retention and deliberately omit raw request payloads and secrets.
-
-## Verification
-
-Run the integration suite from the WordPress runtime:
-
-```sh
+```bash
 php wp-content/plugins/content-factory/tests/run.php
 ```
 
-The suite includes schema/adapter validation, Gutenberg parse-render-round-trip, malformed REST envelopes, ZIP safety, link dependency propagation, aliases, attachment MIME checks, draft idempotency, hook interruption rollback, publish guard behavior, and runtime batch compensation.
+The suite covers strict PageSpec 1.1 validation, exact target selection, profile compilation, Contract Bundle safety, Registry audit, Gutenberg parse/serialize/render, atomic rollback, draft idempotency, publish guards, and a 49-page single-runtime regression corpus.
+
+Snapshots are immutable during normal tests. Refresh them only after an intentional contract/output change:
+
+```bash
+php wp-content/plugins/content-factory/tests/update-snapshots.php --update
+```
+
+See [current-state.md](docs/current-state.md), [content-conversion.md](docs/content-conversion.md), and [adapter-development.md](docs/adapter-development.md).

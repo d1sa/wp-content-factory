@@ -1,0 +1,25 @@
+{
+    "profileId": "potolki-inner",
+    "profileVersion": "2.0.0",
+    "manifestHash": "sha256:a9e704060ec2847c6972687bbb62e4862ea9463b6823154e70ed30c726895a66",
+    "selfCheck": {
+        "status": "compatible",
+        "issues": [],
+        "profileId": "potolki-inner",
+        "profileVersion": "2.0.0",
+        "siteDefaultsVersion": "1.0.0",
+        "manifestHash": "sha256:a9e704060ec2847c6972687bbb62e4862ea9463b6823154e70ed30c726895a66"
+    },
+    "fixtures": {
+        "service-detail": {
+            "status": "compatible",
+            "issues": [],
+            "blockCount": 2
+        },
+        "service-category": {
+            "status": "compatible",
+            "issues": [],
+            "blockCount": 2
+        }
+    }
+}

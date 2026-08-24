@@ -9,6 +9,11 @@ defined( 'ABSPATH' ) || exit;
 
 final class CorePageSpecValidator {
 	private const TOP_LEVEL = array( 'schemaVersion', 'sourceId', 'pageType', 'generatedAgainst', 'target', 'post', 'seo', 'sections' );
+	private PageSpecSchemaRegistry $schemas;
+
+	public function __construct( ?PageSpecSchemaRegistry $schemas = null ) {
+		$this->schemas = $schemas ?? new PageSpecSchemaRegistry();
+	}
 
 	public function validate( mixed $spec ): CompatibilityReport {
 		$report = new CompatibilityReport();
@@ -18,7 +23,7 @@ final class CorePageSpecValidator {
 
 		$source_id = is_string( $spec['sourceId'] ?? null ) ? $spec['sourceId'] : '';
 		$this->reject_unknown( $spec, self::TOP_LEVEL, '', $report, $source_id );
-		foreach ( array( 'schemaVersion', 'sourceId', 'pageType', 'post', 'seo', 'sections' ) as $field ) {
+		foreach ( array( 'schemaVersion', 'sourceId', 'pageType', 'generatedAgainst', 'target', 'post', 'seo', 'sections' ) as $field ) {
 			if ( ! array_key_exists( $field, $spec ) ) {
 				$report->add( ValidationIssue::error( 'REQUIRED_FIELD', '/' . $field, 'Обязательное поле отсутствует.', $source_id, '', $field ) );
 			}
@@ -26,8 +31,9 @@ final class CorePageSpecValidator {
 		if ( isset( $spec['status'] ) ) {
 			$report->add( ValidationIssue::error( 'FORBIDDEN_FIELD', '/status', 'Статус публикации не принимается PageSpec.', $source_id, '', 'field omitted', 'Удалите status; импорт всегда создаёт draft.' ) );
 		}
-		if ( '1.0' !== ( $spec['schemaVersion'] ?? null ) ) {
-			$report->add( ValidationIssue::error( 'UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', 'Версия PageSpec не поддерживается.', $source_id, '', '1.0' ) );
+		$schema_version = is_string( $spec['schemaVersion'] ?? null ) ? $spec['schemaVersion'] : '';
+		if ( ! $this->schemas->supports( $schema_version ) ) {
+			$report->add( ValidationIssue::error( 'UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', 'Версия PageSpec не поддерживается.', $source_id, '', implode( ', ', $this->schemas->versions() ) ) );
 		}
 		if ( ! is_string( $source_id ) || ! preg_match( '/^[a-z0-9][a-z0-9._-]{2,159}$/', $source_id ) ) {
 			$report->add( ValidationIssue::error( 'INVALID_SOURCE_ID', '/sourceId', 'sourceId имеет недопустимый формат.', $source_id, '', '^[a-z0-9][a-z0-9._-]{2,159}$' ) );
@@ -105,14 +111,30 @@ final class CorePageSpecValidator {
 		if ( isset( $spec['generatedAgainst'] ) && is_array( $spec['generatedAgainst'] ) ) {
 			$this->reject_unknown( $spec['generatedAgainst'], array( 'profileId', 'profileVersion', 'manifestHash' ), '/generatedAgainst', $report, $source_id );
 			foreach ( array( 'profileId', 'profileVersion', 'manifestHash' ) as $field ) {
-				$this->validate_optional_string( $spec['generatedAgainst'], $field, '/generatedAgainst/' . $field, $source_id, $report );
+				$this->validate_required_string( $spec['generatedAgainst'], $field, '/generatedAgainst/' . $field, $source_id, $report );
 			}
+			$this->validate_string_pattern( $spec['generatedAgainst'], 'profileId', '/generatedAgainst/profileId', '/^[a-z0-9][a-z0-9-]*$/', $source_id, $report, 'lowercase profile ID' );
+			$this->validate_string_pattern( $spec['generatedAgainst'], 'profileVersion', '/generatedAgainst/profileVersion', '/^\d+\.\d+\.\d+$/', $source_id, $report, 'semantic version' );
+			$this->validate_string_pattern( $spec['generatedAgainst'], 'manifestHash', '/generatedAgainst/manifestHash', '/^sha256:[a-f0-9]{64}$/', $source_id, $report, 'sha256:<64 lowercase hex>' );
 		}
 		if ( isset( $spec['target'] ) && is_array( $spec['target'] ) ) {
 			$this->reject_unknown( $spec['target'], array( 'siteKey', 'profileId' ), '/target', $report, $source_id );
 			foreach ( array( 'siteKey', 'profileId' ) as $field ) {
-				$this->validate_optional_string( $spec['target'], $field, '/target/' . $field, $source_id, $report );
+				$this->validate_required_string( $spec['target'], $field, '/target/' . $field, $source_id, $report );
 			}
+			$this->validate_string_pattern( $spec['target'], 'profileId', '/target/profileId', '/^[a-z0-9][a-z0-9-]*$/', $source_id, $report, 'lowercase profile ID' );
+		}
+	}
+
+	private function validate_required_string( array $data, string $field, string $path, string $source_id, CompatibilityReport $report ): void {
+		if ( ! isset( $data[ $field ] ) || ! is_string( $data[ $field ] ) || '' === trim( $data[ $field ] ) ) {
+			$report->add( ValidationIssue::error( 'REQUIRED_FIELD', $path, $field . ' должен быть непустой строкой.', $source_id, '', 'non-empty string' ) );
+		}
+	}
+
+	private function validate_string_pattern( array $data, string $field, string $path, string $pattern, string $source_id, CompatibilityReport $report, string $expected ): void {
+		if ( isset( $data[ $field ] ) && is_string( $data[ $field ] ) && ! preg_match( $pattern, $data[ $field ] ) ) {
+			$report->add( ValidationIssue::error( 'INVALID_FORMAT', $path, $field . ' имеет недопустимый формат.', $source_id, '', $expected ) );
 		}
 	}
 
@@ -150,7 +172,7 @@ final class CorePageSpecValidator {
 			if ( ! is_string( $section['type'] ?? null ) || '' === trim( $section['type'] ?? '' ) ) {
 				$report->add( ValidationIssue::error( 'INVALID_SECTION_TYPE', $base . '/type', 'Тип секции должен быть непустой строкой.', $source_id, $section_id, 'non-empty string' ) );
 			}
-			if ( ! is_array( $section['data'] ?? null ) || array_is_list( $section['data'] ?? array() ) ) {
+			if ( ! is_array( $section['data'] ?? null ) || ( array() !== $section['data'] && array_is_list( $section['data'] ) ) ) {
 				$report->add( ValidationIssue::error( 'INVALID_TYPE', $base . '/data', 'data секции должен быть объектом.', $source_id, $section_id, 'object' ) );
 			}
 		}

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Content Factory
  * Description: Validates semantic PageSpec JSON and creates reviewable Gutenberg page drafts.
- * Version: 1.1.0
+ * Version: 2.0.0
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Author: Potolki
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CONTENT_FACTORY_VERSION', '1.1.0' );
+define( 'CONTENT_FACTORY_VERSION', '2.0.0' );
 define( 'CONTENT_FACTORY_FILE', __FILE__ );
 define( 'CONTENT_FACTORY_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONTENT_FACTORY_URL', plugin_dir_url( __FILE__ ) );

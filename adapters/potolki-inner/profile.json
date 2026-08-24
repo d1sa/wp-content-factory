@@ -1,0 +1,111 @@
+{
+  "profileSchemaVersion": "1.0",
+  "identity": {"profileId": "potolki-inner", "profileVersion": "2.0.0", "siteKey": "potolkinaveka40"},
+  "compatibility": {"theme": {"stylesheet": ["potolki-wp"], "minVersion": "1.0.0"}},
+  "postDefaults": {"postType": "page", "pageTemplate": "template-full-width.php", "status": "draft"},
+  "pageTypes": {
+    "service-detail": {
+      "occurrences": {"hero": {"min": 1, "max": 1}, "article": {"min": 1}, "catalog": {"min": 0}, "steps": {"min": 0}, "faq": {"min": 1}, "parent-link": {"min": 0, "max": 1}, "cta": {"min": 1, "max": 1}},
+      "parentLink": "autoWhenParent"
+    },
+    "service-category": {
+      "occurrences": {"hero": {"min": 1, "max": 1}, "article": {"min": 0}, "catalog": {"min": 1}, "steps": {"min": 0}, "faq": {"min": 1}, "parent-link": {"min": 0, "max": 1}, "cta": {"min": 1, "max": 1}},
+      "parentLink": "autoWhenParent"
+    }
+  },
+  "sections": {
+    "hero": {
+      "schema": {"type": "object", "additionalProperties": false, "required": ["title", "lead", "primaryAction"], "properties": {"kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1}, "lead": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}, "primaryAction": {"type": "object", "additionalProperties": false, "required": ["label"], "properties": {"label": {"type": "string", "minLength": 1}, "link": {"type": "object"}}}, "benefits": {"type": "array", "maxItems": 3, "items": {"type": "string", "minLength": 1}}, "image": {"type": "object"}, "badge": {"type": "object"}, "note": {"type": "object"}}},
+      "binding": {"mapper": "potolki.hero", "blockName": "potolki/inner-hero", "allowedChildren": ["core/paragraph", "core/heading", "core/list", "core/buttons"]},
+      "rules": ["potolki.hero"]
+    },
+    "article": {
+      "schema": {"type": "object", "additionalProperties": false, "required": ["title", "body"], "properties": {"title": {"type": "string", "minLength": 1}, "accent": {"type": "boolean"}, "body": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": true, "required": ["type"], "properties": {"type": {"type": "string", "enum": ["paragraph", "heading", "list", "buttons"]}}}}}},
+      "binding": {"mapper": "potolki.article", "blockName": "potolki/inner-article", "allowedChildren": ["core/paragraph", "core/heading", "core/list", "core/buttons"]},
+      "rules": ["potolki.article"]
+    },
+    "catalog": {
+      "schema": {"type": "object", "additionalProperties": false, "required": ["title", "items"], "properties": {"kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1}, "items": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["title", "text", "action", "image"], "properties": {"title": {"type": "string", "minLength": 1}, "text": {"type": "string", "minLength": 1}, "action": {"type": "object"}, "image": {"type": "object"}}}}}},
+      "binding": {
+        "mapper": "generic", "blockName": "potolki/inner-catalog",
+        "attributes": {
+          "sectionId": {"transform": "direct", "source": "section.id"},
+          "kicker": {"transform": "coalesce", "sources": ["data.kicker"], "fallback": "Каталог"},
+          "title": {"transform": "direct", "source": "data.title"}
+        },
+        "repeat": {
+          "source": "data.items", "blockName": "potolki/inner-catalog-card",
+          "attributes": {
+            "title": {"transform": "inlineRichText", "source": "item.title", "allowLinks": false},
+            "text": {"transform": "inlineRichText", "source": "item.text", "allowLinks": false},
+            "linkLabel": {"transform": "plainText", "source": "item.action.label"},
+            "linkUrl": {"transform": "link", "source": "item.action.link", "part": "url"},
+            "linkTarget": {"transform": "link", "source": "item.action.link", "part": "target"},
+            "linkRel": {"transform": "link", "source": "item.action.link", "part": "rel"},
+            "imageId": {"transform": "asset", "source": "item.image", "part": "id"},
+            "imageUrl": {"transform": "asset", "source": "item.image", "part": "url"},
+            "imageAlt": {"transform": "asset", "source": "item.image", "part": "alt"}
+          }
+        }
+      },
+      "rules": ["potolki.catalog"]
+    },
+    "steps": {
+      "schema": {"type": "object", "additionalProperties": false, "required": ["title", "items"], "properties": {"kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1}, "items": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["title", "text"], "properties": {"title": {"type": "string", "minLength": 1}, "text": {"type": "string", "minLength": 1}}}}}},
+      "binding": {
+        "mapper": "generic", "blockName": "potolki/inner-steps",
+        "attributes": {"sectionId": {"transform": "direct", "source": "section.id"}, "kicker": {"transform": "coalesce", "sources": ["data.kicker"], "fallback": "Процесс"}, "title": {"transform": "direct", "source": "data.title"}},
+        "repeat": {"source": "data.items", "blockName": "potolki/inner-step", "attributes": {"number": {"transform": "index", "mode": "oneBasedString"}, "title": {"transform": "plainText", "source": "item.title"}, "text": {"transform": "inlineRichText", "source": "item.text", "allowLinks": true}}}
+      },
+      "rules": ["potolki.steps"]
+    },
+    "faq": {
+      "schema": {"type": "object", "additionalProperties": false, "required": ["title", "items"], "properties": {"kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1}, "items": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["question", "answer"], "properties": {"question": {"type": "string", "minLength": 1}, "answer": {"type": "string", "minLength": 1}}}}}},
+      "binding": {
+        "mapper": "generic", "blockName": "potolki/inner-faq",
+        "attributes": {"sectionId": {"transform": "direct", "source": "section.id"}, "kicker": {"transform": "coalesce", "sources": ["data.kicker"], "fallback": "Ответы эксперта"}, "title": {"transform": "direct", "source": "data.title"}},
+        "repeat": {"source": "data.items", "blockName": "potolki/inner-faq-item", "attributes": {"question": {"transform": "plainText", "source": "item.question"}, "answer": {"transform": "inlineRichText", "source": "item.answer", "allowLinks": true}, "isOpen": {"transform": "index", "mode": "firstBoolean"}}}
+      },
+      "rules": ["potolki.faq", "faq.unique"]
+    },
+    "parent-link": {
+      "schema": {"type": "object", "additionalProperties": false, "properties": {"label": {"type": "string"}, "linkLabel": {"type": "string"}}},
+      "binding": {"mapper": "potolki.parent-link", "blockName": "potolki/inner-parent-link"},
+      "rules": ["potolki.parent-link"]
+    },
+    "cta": {
+      "schema": {"type": "object", "additionalProperties": false, "required": ["title", "text", "primaryAction"], "properties": {"variant": {"type": "string", "enum": ["form", "links"]}, "kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1}, "text": {"type": "string", "minLength": 1}, "benefits": {"type": "array", "maxItems": 2, "items": {"type": "string", "minLength": 1}}, "primaryAction": {"type": "object"}, "secondaryAction": {"type": "object"}}},
+      "binding": {"mapper": "potolki.cta", "blockName": "potolki/inner-cta"},
+      "rules": ["potolki.cta"]
+    }
+  },
+  "composition": {
+    "rootBlueprint": [
+      {"blockName": "potolki/inner-hero", "sectionType": "hero", "position": "first", "min": 1, "max": 1},
+      {"blockName": "potolki/inner-content", "technical": true, "position": "second", "min": 1, "max": 1, "mapper": "potolki.content", "allowedChildren": ["potolki/inner-article", "potolki/inner-catalog", "potolki/inner-steps", "potolki/inner-faq", "potolki/inner-parent-link", "potolki/inner-cta"]}
+    ]
+  },
+  "siteDefaults": {
+    "version": "1.0.0",
+    "values": {
+      "readingWordsPerMinute": 180,
+      "categoryLabel": "Виды потолков",
+      "tocLabel": "На странице",
+      "phone": {"caption": "Консультация специалиста", "label": "+7 (920) 893-98-83", "url": "tel:+79208939883"},
+      "hero": {"benefits": ["Бесплатный замер", "Монтаж под ключ", "Гарантия по договору"], "badge": {"value": "12+ лет", "text": "опыта монтажа"}, "note": {"title": "Спроектируем целиком", "text": "Полотно, профиль, свет и карнизы"}, "fallbackImageRef": "services-types"},
+      "parentLink": {"label": "Продолжить выбор", "linkLabel": "← Все варианты раздела"},
+      "cta": {"kicker": "Бесплатный расчёт", "benefits": ["Замерщик бесплатно", "Смета до начала работ"], "nameLabel": "Имя", "namePlaceholder": "Ваше имя", "phoneLabel": "Телефон", "phonePlaceholder": "+7 (___) ___-__-__", "phoneCtaLabel": "или позвоните: +7 (920) 893-98-83", "phoneCtaUrl": "tel:+79208939883", "formNote": "Нажимая кнопку, вы соглашаетесь с политикой обработки данных.", "ymCounterId": "111217601", "ymGoal": "new_lid"}
+    }
+  },
+  "assets": {
+    "hero": {"path": "assets/images/hero.jpg"}, "hero-benefit-canvas": {"path": "assets/images/hero-benefit-canvas.jpg"}, "hero-benefit-install": {"path": "assets/images/hero-benefit-install.jpg"},
+    "gallery-living": {"path": "assets/images/gallery-living.jpg"}, "gallery-niche": {"path": "assets/images/gallery-niche.jpg"}, "gallery-lighting": {"path": "assets/images/gallery-lighting.jpg"}, "gallery-shadow": {"path": "assets/images/gallery-shadow.jpg"}, "gallery-floating": {"path": "assets/images/gallery-floating.jpg"},
+    "process-cornice": {"path": "assets/images/process-cornice.jpg"}, "process-profile": {"path": "assets/images/process-profile.jpg"}, "2process-profile-a": {"path": "assets/images/2process-profile-a.jpg"},
+    "lighting-gx53": {"path": "assets/images/lighting-gx53.jpg"}, "lighting-chandelier": {"path": "assets/images/lighting-chandelier.jpg"}, "lighting-track": {"path": "assets/images/lighting-track.jpg"}, "lighting-linear": {"path": "assets/images/lighting-linear.jpg"}, "lighting-led": {"path": "assets/images/lighting-led.jpg"},
+    "services-types": {"path": "assets/images/services-types.jpg"}, "services-rooms": {"path": "assets/images/services-rooms.jpg"}, "services-lighting": {"path": "assets/images/services-lighting.jpg"}, "services-cornices": {"path": "assets/images/services-cornices.jpg"}, "services-profiles": {"path": "assets/images/services-profiles.jpg"}, "services-solutions": {"path": "assets/images/services-solutions.jpg"},
+    "type-matte": {"path": "assets/images/type-matte.jpg"}, "type-glossy": {"path": "assets/images/type-glossy.jpg"}, "type-satin": {"path": "assets/images/type-satin.jpg"}, "type-fabric": {"path": "assets/images/type-fabric.jpg"}, "type-pvc": {"path": "assets/images/type-pvc.jpg"}, "type-colored": {"path": "assets/images/type-colored.jpg"}, "type-print": {"path": "assets/images/type-print.jpg"},
+    "room-kitchen": {"path": "assets/images/room-kitchen.jpg"}, "room-living": {"path": "assets/images/room-living.jpg"}, "room-bedroom": {"path": "assets/images/room-bedroom.jpg"}, "room-kids": {"path": "assets/images/room-kids.jpg"}, "room-bathroom": {"path": "assets/images/room-bathroom.jpg"}, "room-hallway": {"path": "assets/images/room-hallway.jpg"}, "room-balcony": {"path": "assets/images/room-balcony.jpg"},
+    "solution-basic": {"path": "assets/images/solution-basic.jpg"}, "solution-chandelier": {"path": "assets/images/solution-chandelier.jpg"}, "solution-floating": {"path": "assets/images/solution-floating.jpg"}, "solution-lighting": {"path": "assets/images/solution-lighting.jpg"}, "solution-niche": {"path": "assets/images/solution-niche.jpg"}, "solution-shadow": {"path": "assets/images/solution-shadow.jpg"}
+  },
+  "policies": {"articleHeadingLevels": [3, 4], "stepsItems": {"min": 1}, "faqItems": {"min": 1}, "catalogItems": {"min": 1}, "externalAssets": false, "catalogImageRequired": true, "catalogImageMayBeDecorative": true, "heroImageFallback": "services-types"}
+}

@@ -102,14 +102,21 @@ final class AdminPage {
 			</nav>
 
 			<section class="cf-panel" data-cf-panel="import" <?php echo 'import' !== $current_tab ? 'hidden' : ''; ?>>
-				<h2><?php echo esc_html__( 'Загрузка и проверка', 'content-factory' ); ?></h2>
+				<h2><?php echo esc_html__( 'Пакет статей', 'content-factory' ); ?></h2>
 				<p class="description">
-					<?php echo esc_html__( 'Выберите JSON-файл PageSpec или ZIP-архив с JSON-файлами.', 'content-factory' ); ?>
+					<?php echo esc_html__( 'Загрузите ZIP, подготовленный Content Factory или Codex. Сначала пакет будет проверен без создания страниц.', 'content-factory' ); ?>
 				</p>
+				<p class="description">
+					<?php echo esc_html__( 'В текущем профиле нет верхнего лимита у article, catalog, steps и faq, а также у карточек, шагов и вопросов FAQ. Технические ограничения файла и ZIP-пакета сохраняются.', 'content-factory' ); ?>
+				</p>
+				<details class="cf-advanced-import">
+					<summary><?php echo esc_html__( 'Расширенный импорт', 'content-factory' ); ?></summary>
+					<p class="description"><?php echo esc_html__( 'Для разработки также принимается один PageSpec JSON или JSON envelope. Обычный импорт пакета всегда выполняется атомарно.', 'content-factory' ); ?></p>
+				</details>
 
 				<form id="cf-import-form" enctype="multipart/form-data">
 					<label for="cf-import-file" class="screen-reader-text">
-						<?php echo esc_html__( 'JSON или ZIP для проверки', 'content-factory' ); ?>
+						<?php echo esc_html__( 'Пакет статей для проверки', 'content-factory' ); ?>
 					</label>
 					<input id="cf-import-file" name="file" type="file" accept=".json,.zip,application/json,application/zip" required>
 					<button class="button button-primary" type="submit" id="cf-validate-button">
@@ -128,7 +135,7 @@ final class AdminPage {
 								<?php echo esc_html__( 'Скачать JSON-отчёт', 'content-factory' ); ?>
 							</button>
 							<button type="button" class="button button-primary" id="cf-create-compatible" disabled>
-								<?php echo esc_html__( 'Создать совместимые drafts', 'content-factory' ); ?>
+								<?php echo esc_html__( 'Создать или обновить черновики', 'content-factory' ); ?>
 							</button>
 						</div>
 					</div>
