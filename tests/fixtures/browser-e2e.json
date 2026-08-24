@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "1.0",
+  "sourceId": "cf-browser-e2e",
+  "pageType": "service-category",
+  "post": {
+    "title": "Content Factory Browser E2E",
+    "slug": "cf-browser-e2e",
+    "categoryLabel": "Тест"
+  },
+  "seo": {
+    "title": "Content Factory Browser E2E | Локальный тест",
+    "description": "Техническая страница для проверки локального workflow Content Factory."
+  },
+  "sections": [
+    {
+      "id": "hero",
+      "type": "hero",
+      "data": {
+        "title": "Content Factory Browser E2E",
+        "lead": ["Проверка загрузки, preview и создания управляемого draft."],
+        "primaryAction": {
+          "label": "Перейти к форме",
+          "link": {"kind": "anchor", "anchor": "request"}
+        },
+        "image": {"source": "themeAsset", "ref": "services-types", "alt": "Образцы натяжных потолков"}
+      }
+    },
+    {
+      "id": "test-catalog",
+      "type": "catalog",
+      "data": {
+        "title": "Тестовая карточка",
+        "items": [
+          {
+            "title": "Услуги",
+            "text": "Проверка безопасной ссылки и theme asset.",
+            "action": {"label": "Позвонить", "link": {"kind": "tel", "value": "+79208939883"}},
+            "image": {"source": "themeAsset", "ref": "services-types", "alt": "Каталог услуг"}
+          }
+        ]
+      }
+    },
+    {
+      "id": "faq",
+      "type": "faq",
+      "data": {
+        "title": "Проверка FAQ",
+        "items": [
+          {"question": "Создаётся ли draft?", "answer": "Да, импорт не публикует страницу."},
+          {"question": "Сохраняется ли SEO?", "answer": "Да, поля проверяются после записи."},
+          {"question": "Можно ли повторить импорт?", "answer": "Да, повтор вернёт no_change."}
+        ]
+      }
+    },
+    {
+      "id": "request",
+      "type": "cta",
+      "data": {
+        "variant": "form",
+        "title": "Тестовая форма",
+        "text": "Форма используется только для проверки рендера блока.",
+        "primaryAction": {"label": "Отправить"}
+      }
+    }
+  ]
+}

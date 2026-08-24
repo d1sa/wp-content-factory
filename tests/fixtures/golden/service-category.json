@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "1.0",
+  "sourceId": "001-vidy-potolkov",
+  "pageType": "service-category",
+  "generatedAgainst": {
+    "profileId": "potolki-inner",
+    "profileVersion": "1.1.0"
+  },
+  "target": {
+    "siteKey": "potolkinaveka40",
+    "profileId": "potolki-inner"
+  },
+  "post": {
+    "title": "Виды натяжных потолков",
+    "slug": "vidy-potolkov",
+    "categoryLabel": "Услуги"
+  },
+  "seo": {
+    "title": "Виды натяжных потолков в Калуге",
+    "description": "Сравните популярные виды натяжных потолков, фактуры и материалы. Поможем выбрать решение для вашего интерьера.",
+    "primaryKeyword": "виды натяжных потолков"
+  },
+  "sections": [
+    {
+      "id": "hero",
+      "type": "hero",
+      "data": {
+        "kicker": "Каталог решений · Калуга и область",
+        "title": "Виды натяжных потолков",
+        "lead": [
+          "Сравните фактуры и материалы для разных помещений.",
+          "На замере покажем образцы и поможем выбрать подходящий вариант."
+        ],
+        "primaryAction": {
+          "label": "Получить консультацию",
+          "link": {"kind": "anchor", "anchor": "request"}
+        },
+        "image": {
+          "source": "themeAsset",
+          "ref": "services-types",
+          "alt": "Образцы разных видов натяжных потолков"
+        },
+        "benefits": ["Бесплатный замер", "Образцы на объекте", "Гарантия по договору"]
+      }
+    },
+    {
+      "id": "ceiling-types",
+      "type": "catalog",
+      "data": {
+        "kicker": "Каталог",
+        "title": "Выберите подходящую фактуру",
+        "items": [
+          {
+            "title": "Матовые потолки",
+            "text": "Спокойная фактура без выраженных отражений.",
+            "action": {
+              "label": "Подробнее",
+              "link": {"kind": "path", "path": "/uslugi/vidy-potolkov/matovye/"}
+            },
+            "image": {"source": "themeAsset", "ref": "type-matte", "alt": "Матовый потолок"}
+          },
+          {
+            "title": "Глянцевые потолки",
+            "text": "Отражающая фактура для выразительного интерьера.",
+            "action": {
+              "label": "Подробнее",
+              "link": {"kind": "path", "path": "/uslugi/vidy-potolkov/glyantsevye/"}
+            },
+            "image": {"source": "themeAsset", "ref": "type-glossy", "alt": "Глянцевый потолок"}
+          },
+          {
+            "title": "Сатиновые потолки",
+            "text": "Мягкий блеск и деликатное рассеивание света.",
+            "action": {
+              "label": "Подробнее",
+              "link": {"kind": "path", "path": "/uslugi/vidy-potolkov/satinovye/"}
+            },
+            "image": {"source": "themeAsset", "ref": "type-satin", "alt": "Сатиновый потолок"}
+          }
+        ]
+      }
+    },
+    {
+      "id": "faq",
+      "type": "faq",
+      "data": {
+        "title": "Частые вопросы о выборе потолка",
+        "items": [
+          {
+            "question": "Какая фактура практичнее?",
+            "answer": "Практичность зависит от помещения, освещения и требований к уходу."
+          },
+          {
+            "question": "Можно ли увидеть образцы до заказа?",
+            "answer": "Да, специалист привезёт образцы полотен на бесплатный замер."
+          },
+          {
+            "question": "Как сравнить итоговую стоимость?",
+            "answer": "Сравнивайте полную комплектацию: полотно, профиль, углы, освещение и монтаж."
+          }
+        ]
+      }
+    },
+    {
+      "id": "request",
+      "type": "cta",
+      "data": {
+        "variant": "links",
+        "kicker": "Продолжите выбор",
+        "title": "Посмотрите услуги и цены",
+        "text": "Перейдите в нужный раздел или оставьте заявку на бесплатный замер.",
+        "primaryAction": {
+          "label": "Все услуги",
+          "link": {"kind": "path", "path": "/uslugi/"}
+        },
+        "secondaryAction": {
+          "label": "Посмотреть цены",
+          "link": {"kind": "path", "path": "/ceny/"}
+        }
+      }
+    }
+  ]
+}

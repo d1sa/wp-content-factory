@@ -1,0 +1,264 @@
+{
+  "manifestSchemaVersion": "1.0",
+  "profileId": "potolki-inner",
+  "profileVersion": "1.1.0",
+  "siteKey": "potolkinaveka40",
+  "themeCompatibility": {
+    "stylesheet": ["potolki-wp"],
+    "minVersion": "1.0.0"
+  },
+  "pageSpecVersions": ["1.0"],
+  "postDefaults": {
+    "postType": "page",
+    "pageTemplate": "template-full-width.php",
+    "status": "draft"
+  },
+  "pageTypes": {
+    "service-detail": {
+      "occurrences": {
+        "hero": {"min": 1, "max": 1},
+        "article": {"min": 1, "max": 10},
+        "catalog": {"min": 0, "max": 1},
+        "steps": {"min": 0, "max": 1},
+        "faq": {"min": 1, "max": 1},
+        "parent-link": {"min": 0, "max": 1},
+        "cta": {"min": 1, "max": 1}
+      },
+      "parentLink": "autoWhenParent"
+    },
+    "service-category": {
+      "occurrences": {
+        "hero": {"min": 1, "max": 1},
+        "article": {"min": 0, "max": 10},
+        "catalog": {"min": 1, "max": 1},
+        "steps": {"min": 0, "max": 1},
+        "faq": {"min": 1, "max": 1},
+        "parent-link": {"min": 0, "max": 1},
+        "cta": {"min": 1, "max": 1}
+      },
+      "parentLink": "autoWhenParent"
+    }
+  },
+  "sections": {
+    "hero": {
+      "blockName": "potolki/inner-hero",
+      "allowedData": ["kicker", "title", "lead", "primaryAction", "benefits", "image", "badge", "note"],
+      "requiredData": ["title", "lead", "primaryAction"],
+      "schema": {
+        "type": "object", "additionalProperties": false, "required": ["title", "lead", "primaryAction"],
+        "properties": {
+          "kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1}, "lead": {"type": "string", "minLength": 1},
+          "primaryAction": {"type": "object", "additionalProperties": false, "required": ["label"], "properties": {"label": {"type": "string", "minLength": 1}, "link": {"type": "object"}}},
+          "benefits": {"type": "array", "maxItems": 3, "items": {"type": "string", "minLength": 1}},
+          "image": {"type": "object"}, "badge": {"type": "object"}, "note": {"type": "object"}
+        }
+      },
+      "mappingAttributes": ["kicker", "title", "lead1", "lead2", "buttonLabel", "buttonUrl", "buttonTarget", "buttonRel", "phoneCaption", "phoneLabel", "phoneUrl", "benefit1", "benefit2", "benefit3", "imageId", "imageUrl", "imageAlt", "badgeValue", "badgeText", "noteTitle", "noteText"]
+    },
+    "article": {
+      "blockName": "potolki/inner-article",
+      "allowedData": ["title", "accent", "body"],
+      "requiredData": ["title", "body"],
+      "schema": {
+        "type": "object", "additionalProperties": false, "required": ["title", "body"],
+        "properties": {
+          "title": {"type": "string", "minLength": 1}, "accent": {"type": "boolean"},
+          "body": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": true, "required": ["type"], "properties": {"type": {"type": "string", "enum": ["paragraph", "heading", "list", "buttons"]}}}}
+        }
+      },
+      "mappingAttributes": ["sectionId", "sectionIndex", "title", "accent"],
+      "allowedChildren": ["core/paragraph", "core/heading", "core/list", "core/buttons"]
+    },
+    "catalog": {
+      "blockName": "potolki/inner-catalog",
+      "allowedData": ["kicker", "title", "items"],
+      "requiredData": ["title", "items"],
+      "schema": {
+        "type": "object", "additionalProperties": false, "required": ["title", "items"],
+        "properties": {
+          "kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1},
+          "items": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["title", "text", "action", "image"], "properties": {"title": {"type": "string", "minLength": 1}, "text": {"type": "string", "minLength": 1}, "action": {"type": "object"}, "image": {"type": "object"}}}}
+        }
+      },
+      "mappingAttributes": ["sectionId", "kicker", "title"],
+      "childBlockName": "potolki/inner-catalog-card",
+      "childMappingAttributes": ["title", "text", "linkLabel", "linkUrl", "linkTarget", "linkRel", "imageId", "imageUrl", "imageAlt"]
+    },
+    "steps": {
+      "blockName": "potolki/inner-steps",
+      "allowedData": ["kicker", "title", "items"],
+      "requiredData": ["title", "items"],
+      "schema": {
+        "type": "object", "additionalProperties": false, "required": ["title", "items"],
+        "properties": {
+          "kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1},
+          "items": {"type": "array", "minItems": 2, "maxItems": 8, "items": {"type": "object", "additionalProperties": false, "required": ["title", "text"], "properties": {"title": {"type": "string", "minLength": 1}, "text": {"type": "string", "minLength": 1}}}}
+        }
+      },
+      "mappingAttributes": ["sectionId", "kicker", "title"],
+      "childBlockName": "potolki/inner-step",
+      "childMappingAttributes": ["number", "title", "text"]
+    },
+    "faq": {
+      "blockName": "potolki/inner-faq",
+      "allowedData": ["kicker", "title", "items"],
+      "requiredData": ["title", "items"],
+      "schema": {
+        "type": "object", "additionalProperties": false, "required": ["title", "items"],
+        "properties": {
+          "kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1},
+          "items": {"type": "array", "minItems": 3, "maxItems": 10, "items": {"type": "object", "additionalProperties": false, "required": ["question", "answer"], "properties": {"question": {"type": "string", "minLength": 1}, "answer": {"type": "string", "minLength": 1}}}}
+        }
+      },
+      "mappingAttributes": ["sectionId", "kicker", "title"],
+      "childBlockName": "potolki/inner-faq-item",
+      "childMappingAttributes": ["question", "answer", "isOpen"]
+    },
+    "parent-link": {
+      "blockName": "potolki/inner-parent-link",
+      "allowedData": ["label", "linkLabel"],
+      "requiredData": [],
+      "schema": {"type": "object", "additionalProperties": false, "properties": {"label": {"type": "string"}, "linkLabel": {"type": "string"}}},
+      "mappingAttributes": ["label", "linkLabel", "linkUrl"]
+    },
+    "cta": {
+      "blockName": "potolki/inner-cta",
+      "allowedData": ["variant", "kicker", "title", "text", "benefits", "primaryAction", "secondaryAction"],
+      "requiredData": ["title", "text", "primaryAction"],
+      "schema": {
+        "type": "object", "additionalProperties": false, "required": ["title", "text", "primaryAction"],
+        "properties": {
+          "variant": {"type": "string", "enum": ["form", "links"]}, "kicker": {"type": "string"}, "title": {"type": "string", "minLength": 1}, "text": {"type": "string", "minLength": 1},
+          "benefits": {"type": "array", "maxItems": 2, "items": {"type": "string", "minLength": 1}},
+          "primaryAction": {"type": "object"}, "secondaryAction": {"type": "object"}
+        }
+      },
+      "mappingAttributes": ["sectionId", "variant", "kicker", "title", "text", "benefit1", "benefit2", "nameLabel", "namePlaceholder", "phoneLabel", "phonePlaceholder", "buttonLabel", "buttonUrl", "buttonTarget", "buttonRel", "secondaryLabel", "secondaryUrl", "phoneCtaLabel", "phoneCtaUrl", "formNote", "ymCounterId", "ymGoal"]
+    }
+  },
+  "rootBlueprint": [
+    {
+      "blockName": "potolki/inner-hero",
+      "sectionType": "hero",
+      "position": "first",
+      "min": 1,
+      "max": 1
+    },
+    {
+      "blockName": "potolki/inner-content",
+      "technical": true,
+      "position": "second",
+      "min": 1,
+      "max": 1,
+      "mappingAttributes": ["readingTime", "categoryLabel", "tocLabel"],
+      "allowedChildren": ["potolki/inner-article", "potolki/inner-catalog", "potolki/inner-steps", "potolki/inner-faq", "potolki/inner-parent-link", "potolki/inner-cta"]
+    }
+  ],
+  "siteDefaults": {
+    "readingWordsPerMinute": 180,
+    "categoryLabel": "Виды потолков",
+    "tocLabel": "На странице",
+    "phone": {
+      "caption": "Консультация специалиста",
+      "label": "+7 (920) 893-98-83",
+      "url": "tel:+79208939883"
+    },
+    "hero": {
+      "benefits": ["Бесплатный замер", "Монтаж под ключ", "Гарантия по договору"],
+      "badge": {"value": "12+ лет", "text": "опыта монтажа"},
+      "note": {"title": "Спроектируем целиком", "text": "Полотно, профиль, свет и карнизы"},
+      "fallbackImageRef": "services-types"
+    },
+    "parentLink": {
+      "label": "Продолжить выбор",
+      "linkLabel": "← Все варианты раздела"
+    },
+    "cta": {
+      "kicker": "Бесплатный расчёт",
+      "benefits": ["Замерщик бесплатно", "Смета до начала работ"],
+      "nameLabel": "Имя",
+      "namePlaceholder": "Ваше имя",
+      "phoneLabel": "Телефон",
+      "phonePlaceholder": "+7 (___) ___-__-__",
+      "phoneCtaLabel": "или позвоните: +7 (920) 893-98-83",
+      "phoneCtaUrl": "tel:+79208939883",
+      "formNote": "Нажимая кнопку, вы соглашаетесь с политикой обработки данных.",
+      "ymCounterId": "111217601",
+      "ymGoal": "new_lid"
+    }
+  },
+  "assets": {
+    "hero": {"path": "assets/images/hero.jpg"},
+    "hero-benefit-canvas": {"path": "assets/images/hero-benefit-canvas.jpg"},
+    "hero-benefit-install": {"path": "assets/images/hero-benefit-install.jpg"},
+    "gallery-living": {"path": "assets/images/gallery-living.jpg"},
+    "gallery-niche": {"path": "assets/images/gallery-niche.jpg"},
+    "gallery-lighting": {"path": "assets/images/gallery-lighting.jpg"},
+    "gallery-shadow": {"path": "assets/images/gallery-shadow.jpg"},
+    "gallery-floating": {"path": "assets/images/gallery-floating.jpg"},
+    "process-cornice": {"path": "assets/images/process-cornice.jpg"},
+    "process-profile": {"path": "assets/images/process-profile.jpg"},
+    "2process-profile-a": {"path": "assets/images/2process-profile-a.jpg"},
+    "lighting-gx53": {"path": "assets/images/lighting-gx53.jpg"},
+    "lighting-chandelier": {"path": "assets/images/lighting-chandelier.jpg"},
+    "lighting-track": {"path": "assets/images/lighting-track.jpg"},
+    "lighting-linear": {"path": "assets/images/lighting-linear.jpg"},
+    "lighting-led": {"path": "assets/images/lighting-led.jpg"},
+    "services-types": {"path": "assets/images/services-types.jpg"},
+    "services-rooms": {"path": "assets/images/services-rooms.jpg"},
+    "services-lighting": {"path": "assets/images/services-lighting.jpg"},
+    "services-cornices": {"path": "assets/images/services-cornices.jpg"},
+    "services-profiles": {"path": "assets/images/services-profiles.jpg"},
+    "services-solutions": {"path": "assets/images/services-solutions.jpg"},
+    "type-matte": {"path": "assets/images/type-matte.jpg"},
+    "type-glossy": {"path": "assets/images/type-glossy.jpg"},
+    "type-satin": {"path": "assets/images/type-satin.jpg"},
+    "type-fabric": {"path": "assets/images/type-fabric.jpg"},
+    "type-pvc": {"path": "assets/images/type-pvc.jpg"},
+    "type-colored": {"path": "assets/images/type-colored.jpg"},
+    "type-print": {"path": "assets/images/type-print.jpg"},
+    "room-kitchen": {"path": "assets/images/room-kitchen.jpg"},
+    "room-living": {"path": "assets/images/room-living.jpg"},
+    "room-bedroom": {"path": "assets/images/room-bedroom.jpg"},
+    "room-kids": {"path": "assets/images/room-kids.jpg"},
+    "room-bathroom": {"path": "assets/images/room-bathroom.jpg"},
+    "room-hallway": {"path": "assets/images/room-hallway.jpg"},
+    "room-balcony": {"path": "assets/images/room-balcony.jpg"},
+    "solution-basic": {"path": "assets/images/solution-basic.jpg"},
+    "solution-chandelier": {"path": "assets/images/solution-chandelier.jpg"},
+    "solution-floating": {"path": "assets/images/solution-floating.jpg"},
+    "solution-lighting": {"path": "assets/images/solution-lighting.jpg"},
+    "solution-niche": {"path": "assets/images/solution-niche.jpg"},
+    "solution-shadow": {"path": "assets/images/solution-shadow.jpg"}
+  },
+  "aliases": {},
+  "policies": {
+    "articleHeadingLevels": [3, 4],
+    "stepsItems": {"min": 2, "max": 8},
+    "faqItems": {"min": 3, "max": 10},
+    "catalogItems": {"min": 1},
+    "externalAssets": false,
+    "catalogImageRequired": true,
+    "catalogImageMayBeDecorative": true,
+    "heroImageFallback": "services-types",
+    "registryContracts": {
+      "potolki/inner-hero": {"attributes": {"kicker": "string", "title": "string", "lead1": "string", "lead2": "string", "buttonLabel": "string", "buttonUrl": "string", "buttonTarget": "string", "buttonRel": "string", "phoneCaption": "string", "phoneLabel": "string", "phoneUrl": "string", "benefit1": "string", "benefit2": "string", "benefit3": "string", "imageId": "number", "imageUrl": "string", "imageAlt": "string", "badgeValue": "string", "badgeText": "string", "noteTitle": "string", "noteText": "string"}},
+      "potolki/inner-content": {"attributes": {"readingTime": "string", "categoryLabel": "string", "tocLabel": "string"}},
+      "potolki/inner-article": {"attributes": {"sectionId": "string", "sectionIndex": "string", "title": "string", "accent": "boolean"}},
+      "potolki/inner-catalog": {"attributes": {"sectionId": "string", "kicker": "string", "title": "string"}},
+      "potolki/inner-catalog-card": {"parent": ["potolki/inner-catalog"], "attributes": {"title": "string", "text": "string", "linkLabel": "string", "linkUrl": "string", "linkTarget": "string", "linkRel": "string", "imageId": "number", "imageUrl": "string", "imageAlt": "string"}},
+      "potolki/inner-steps": {"attributes": {"sectionId": "string", "kicker": "string", "title": "string"}},
+      "potolki/inner-step": {"parent": ["potolki/inner-steps"], "attributes": {"number": "string", "title": "string", "text": "string"}},
+      "potolki/inner-faq": {"attributes": {"sectionId": "string", "kicker": "string", "title": "string"}},
+      "potolki/inner-faq-item": {"parent": ["potolki/inner-faq"], "attributes": {"question": "string", "answer": "string", "isOpen": "boolean"}},
+      "potolki/inner-parent-link": {"attributes": {"label": "string", "linkLabel": "string", "linkUrl": "string"}},
+      "potolki/inner-cta": {"attributes": {"sectionId": "string", "variant": {"type": "string", "enum": ["form", "links"]}, "kicker": "string", "title": "string", "text": "string", "benefit1": "string", "benefit2": "string", "nameLabel": "string", "namePlaceholder": "string", "phoneLabel": "string", "phonePlaceholder": "string", "buttonLabel": "string", "buttonUrl": "string", "buttonTarget": "string", "buttonRel": "string", "secondaryLabel": "string", "secondaryUrl": "string", "phoneCtaLabel": "string", "phoneCtaUrl": "string", "formNote": "string", "ymCounterId": "string", "ymGoal": "string"}},
+      "core/paragraph": {"attributes": {}},
+      "core/heading": {"attributes": {"level": "number"}},
+      "core/list": {"attributes": {"ordered": "boolean"}},
+      "core/list-item": {"attributes": {}},
+      "core/buttons": {"attributes": {}},
+      "core/button": {"attributes": {}}
+    }
+  }
+}
