@@ -699,6 +699,7 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 			'badgeText'   => (string) ( $badge['text'] ?? '' ),
 			'noteTitle'   => (string) ( $note['title'] ?? '' ),
 			'noteText'    => (string) ( $note['text'] ?? '' ),
+			'noteUrl'     => (string) ( $note['url'] ?? '/forma-obratnoj-svyaz' ),
 		);
 		if ( $lead_children ) {
 			$attributes['hasLeadBlocks'] = true;

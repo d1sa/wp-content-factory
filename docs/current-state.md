@@ -12,7 +12,7 @@ The response contains the PageSpec schema, semantic schemas, page types, safe de
 
 ## Profile runtime
 
-`adapters/potolki-inner/profile.json` is validated by `theme-profile-1.0.schema.json` and compiled directly into `CompiledProfile`. The authoring-schema version and plugin/profile versions are separate concepts; the current plugin and profile release is 2.0.0.
+`adapters/potolki-inner/profile.json` is validated by `theme-profile-1.0.schema.json` and compiled directly into `CompiledProfile`. The authoring-schema version and plugin/profile versions are separate concepts; the current profile release is 2.1.0. The hero mapper exposes the clickable note card through `noteUrl`, with `/forma-obratnoj-svyaz` as the site default.
 
 Compilation derives:
 

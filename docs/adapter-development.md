@@ -35,6 +35,8 @@ A section binding declares its root block, mapper, root attributes, optional rep
 
 Every semantic field must be consumed by a mapper or explicitly classified as validation-only/control/extension. The contract auditor rejects silent-loss drift, unknown Registry attributes, type/enum mismatches, invalid parent relations, and allowedBlocks drift.
 
+Theme-facing attributes such as the inner hero's `noteUrl` must be present in the named mapper inventory, emitted by the adapter, and represented by a versioned site default when existing generated pages need a stable fallback.
+
 ## Versioning and hashes
 
 Bump `identity.profileVersion` for a public semantic/profile contract change. `ProfileCompiler` computes `manifestHash` from the canonical public projection; object-key order does not change the hash, while meaningful list/order/schema changes do.

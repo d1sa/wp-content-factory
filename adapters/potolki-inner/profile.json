@@ -1,6 +1,6 @@
 {
   "profileSchemaVersion": "1.0",
-  "identity": {"profileId": "potolki-inner", "profileVersion": "2.0.0", "siteKey": "potolkinaveka40"},
+  "identity": {"profileId": "potolki-inner", "profileVersion": "2.1.0", "siteKey": "potolkinaveka40"},
   "compatibility": {"theme": {"stylesheet": ["potolki-wp"], "minVersion": "1.0.0"}},
   "postDefaults": {"postType": "page", "pageTemplate": "template-full-width.php", "status": "draft"},
   "pageTypes": {
@@ -86,13 +86,13 @@
     ]
   },
   "siteDefaults": {
-    "version": "1.0.0",
+    "version": "1.1.0",
     "values": {
       "readingWordsPerMinute": 180,
       "categoryLabel": "Виды потолков",
       "tocLabel": "На странице",
       "phone": {"caption": "Консультация специалиста", "label": "+7 (920) 893-98-83", "url": "tel:+79208939883"},
-      "hero": {"benefits": ["Бесплатный замер", "Монтаж под ключ", "Гарантия по договору"], "badge": {"value": "12+ лет", "text": "опыта монтажа"}, "note": {"title": "Спроектируем целиком", "text": "Полотно, профиль, свет и карнизы"}, "fallbackImageRef": "services-types"},
+      "hero": {"benefits": ["Бесплатный замер", "Монтаж под ключ", "Гарантия по договору"], "badge": {"value": "12+ лет", "text": "опыта монтажа"}, "note": {"title": "Спроектируем целиком", "text": "Полотно, профиль, свет и карнизы", "url": "/forma-obratnoj-svyaz"}, "fallbackImageRef": "services-types"},
       "parentLink": {"label": "Продолжить выбор", "linkLabel": "← Все варианты раздела"},
       "cta": {"kicker": "Бесплатный расчёт", "benefits": ["Замерщик бесплатно", "Смета до начала работ"], "nameLabel": "Имя", "namePlaceholder": "Ваше имя", "phoneLabel": "Телефон", "phonePlaceholder": "+7 (___) ___-__-__", "phoneCtaLabel": "или позвоните: +7 (920) 893-98-83", "phoneCtaUrl": "tel:+79208939883", "formNote": "Нажимая кнопку, вы соглашаетесь с политикой обработки данных.", "ymCounterId": "111217601", "ymGoal": "new_lid"}
     }

@@ -12,7 +12,7 @@ Content Factory 2.0 validates semantic PageSpec 1.1 JSON and creates reviewable 
 - Batches are always atomic: any validation or runtime failure prevents or rolls back the entire package.
 - The runtime does not impose a PageSpec/page-count limit. File-size and ZIP uncompressed-size guards remain transport safety limits.
 
-The bundled profile is `potolki-inner` 2.0.0 for `siteKey=potolkinaveka40`.
+The bundled profile is `potolki-inner` 2.1.0 for `siteKey=potolkinaveka40`. Its hero contract includes the editable `noteUrl` card action, defaulting to `/forma-obratnoj-svyaz`.
 
 ## Workflow
 

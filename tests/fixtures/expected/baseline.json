@@ -1,24 +1,46 @@
 {
     "profileId": "potolki-inner",
-    "profileVersion": "2.0.0",
-    "manifestHash": "sha256:a9e704060ec2847c6972687bbb62e4862ea9463b6823154e70ed30c726895a66",
+    "profileVersion": "2.1.0",
+    "manifestHash": "sha256:197a0837db71bba171545c29783eb95436109da927b6c51304d3b0ef7e6cb6b8",
     "selfCheck": {
         "status": "compatible",
         "issues": [],
         "profileId": "potolki-inner",
-        "profileVersion": "2.0.0",
-        "siteDefaultsVersion": "1.0.0",
-        "manifestHash": "sha256:a9e704060ec2847c6972687bbb62e4862ea9463b6823154e70ed30c726895a66"
+        "profileVersion": "2.1.0",
+        "siteDefaultsVersion": "1.1.0",
+        "manifestHash": "sha256:197a0837db71bba171545c29783eb95436109da927b6c51304d3b0ef7e6cb6b8"
     },
     "fixtures": {
         "service-detail": {
-            "status": "compatible",
-            "issues": [],
+            "status": "compatible_with_warnings",
+            "issues": [
+                {
+                    "code": "GENERATED_AGAINST_MISMATCH",
+                    "severity": "warning",
+                    "path": "/generatedAgainst/manifestHash",
+                    "sourceId": "042-matovye-potolki",
+                    "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
+                    "expected": "sha256:197a0837db71bba171545c29783eb95436109da927b6c51304d3b0ef7e6cb6b8",
+                    "suggestion": "",
+                    "docsRef": ""
+                }
+            ],
             "blockCount": 2
         },
         "service-category": {
-            "status": "compatible",
-            "issues": [],
+            "status": "compatible_with_warnings",
+            "issues": [
+                {
+                    "code": "GENERATED_AGAINST_MISMATCH",
+                    "severity": "warning",
+                    "path": "/generatedAgainst/manifestHash",
+                    "sourceId": "001-vidy-potolkov",
+                    "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
+                    "expected": "sha256:197a0837db71bba171545c29783eb95436109da927b6c51304d3b0ef7e6cb6b8",
+                    "suggestion": "",
+                    "docsRef": ""
+                }
+            ],
             "blockCount": 2
         }
     }

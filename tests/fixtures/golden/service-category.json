@@ -4,7 +4,7 @@
   "pageType": "service-category",
   "generatedAgainst": {
     "profileId": "potolki-inner",
-    "profileVersion": "2.0.0",
+    "profileVersion": "2.1.0",
     "manifestHash": "sha256:a9e704060ec2847c6972687bbb62e4862ea9463b6823154e70ed30c726895a66"
   },
   "target": {
