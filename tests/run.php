@@ -1458,6 +1458,7 @@ $runner->test(
 			cf_assert_same( 'template-full-width.php', get_page_template_slug( $post_id ), 'Interrupted draft template rollback' );
 
 			$publisher = new ContentFactory\WordPress\PublishManager( $pipeline, $registry, new ContentFactory\WordPress\HashManager() );
+			update_post_meta( $post_id, '_content_factory_validation_status', 'stale' );
 			$throw_publish = true;
 			$publish_hook = static function ( int $saved_id, WP_Post $saved_post ) use ( $post_id, &$throw_publish ): void {
 				if ( $throw_publish && $saved_id === $post_id && 'publish' === $saved_post->post_status ) {

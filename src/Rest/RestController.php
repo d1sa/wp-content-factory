@@ -180,7 +180,7 @@ final class RestController {
 	}
 
 	public function pages( \WP_REST_Request $request ): array {
-		$query = new \WP_Query( array( 'post_type' => 'page', 'post_status' => array( 'draft', 'publish', 'pending', 'private' ), 'meta_key' => '_content_factory_source_id', 'posts_per_page' => min( 100, max( 1, (int) ( $request['per_page'] ?: 50 ) ) ), 'paged' => max( 1, (int) ( $request['page'] ?: 1 ) ), 'orderby' => 'modified', 'order' => 'DESC' ) );
+		$query = new \WP_Query( array( 'post_type' => 'page', 'post_status' => array( 'draft', 'publish', 'pending', 'private' ), 'meta_key' => '_content_factory_source_id', 'posts_per_page' => min( 100, max( 1, (int) ( $request['per_page'] ?: 100 ) ) ), 'paged' => max( 1, (int) ( $request['page'] ?: 1 ) ), 'orderby' => array( 'modified' => 'DESC', 'ID' => 'ASC' ) ) );
 		$items = array_map( array( $this, 'page_data' ), $query->posts );
 		return array( 'items' => $items, 'total' => (int) $query->found_posts, 'pages' => (int) $query->max_num_pages );
 	}
@@ -220,7 +220,6 @@ final class RestController {
 			&& $profile->defaults_version() === (string) get_post_meta( $post->ID, '_content_factory_site_defaults_version', true )
 			&& $profile->canonical_hash() === (string) get_post_meta( $post->ID, '_content_factory_manifest_hash', true );
 		$matches = ! $report->has_errors() && $profile_matches
-			&& ( $pipeline_result->build_plan()?->post_content() ?? null ) === $post->post_content
 			&& sanitize_text_field( $spec['seo']['title'] ?? '' ) === $seo_title
 			&& sanitize_textarea_field( $spec['seo']['description'] ?? '' ) === $seo_description
 			&& '' !== $stored_hash && '' !== $current_hash && hash_equals( $stored_hash, $current_hash );

@@ -30,8 +30,8 @@ final class PublishManager {
 				continue;
 			}
 			$stored_hash = (string) get_post_meta( $post->ID, '_content_factory_validation_hash', true );
-			if ( 'valid' !== get_post_meta( $post->ID, '_content_factory_validation_status', true ) || '' === $stored_hash ) {
-				$results[] = array( 'sourceId' => $source_id, 'status' => 'error', 'message' => 'Validation устарела или невалидна.' );
+			if ( '' === $stored_hash ) {
+				$results[] = array( 'sourceId' => $source_id, 'status' => 'error', 'message' => 'Validation hash отсутствует.' );
 				continue;
 			}
 			$spec = json_decode( (string) get_post_meta( $post->ID, '_content_factory_source_spec', true ), true );
@@ -49,7 +49,6 @@ final class PublishManager {
 			}
 			$seo_title = (string) get_post_meta( $post->ID, '_yoast_wpseo_title', true );
 			$seo_description = (string) get_post_meta( $post->ID, '_yoast_wpseo_metadesc', true );
-			$planned_content = $pipeline_result->build_plan()?->post_content() ?? '';
 			$current_hash = $this->hashes->validation_hash(
 				array(
 					'title' => $post->post_title,
@@ -68,7 +67,7 @@ final class PublishManager {
 				&& $profile->version() === (string) get_post_meta( $post->ID, '_content_factory_profile_version', true )
 				&& $profile->defaults_version() === (string) get_post_meta( $post->ID, '_content_factory_site_defaults_version', true )
 				&& $profile->canonical_hash() === (string) get_post_meta( $post->ID, '_content_factory_manifest_hash', true );
-			if ( $report->has_errors() || ! $profile_matches || '' === $seo_title || '' === $seo_description || $planned_content !== $post->post_content || ! parse_blocks( $post->post_content ) || ! hash_equals( $stored_hash, $current_hash ) ) {
+			if ( $report->has_errors() || ! $profile_matches || '' === $seo_title || '' === $seo_description || ! parse_blocks( $post->post_content ) || ! hash_equals( $stored_hash, $current_hash ) ) {
 				update_post_meta( $post->ID, '_content_factory_validation_status', 'stale' );
 				$results[] = array( 'sourceId' => $source_id, 'postId' => $post->ID, 'status' => 'error', 'message' => 'Финальная проверка обнаружила изменения content, SEO или validation hash.', 'issues' => $report->issues(), 'compatibility_status' => $report->status() );
 				continue;
@@ -109,6 +108,8 @@ final class PublishManager {
 				$results[] = array( 'sourceId' => $source_id, 'postId' => $post->ID, 'status' => 'error', 'message' => $message, 'rollback' => 'draft' === get_post_status( $post->ID ), 'exception' => null !== $publish_exception );
 				continue;
 			}
+			update_post_meta( $post->ID, '_content_factory_validation_status', 'valid' );
+			update_post_meta( $post->ID, '_content_factory_validated_at', gmdate( 'c' ) );
 			$results[] = $this->published_result( $source_id, $post, $report, $seo_title, $seo_description );
 		}
 		return $results;

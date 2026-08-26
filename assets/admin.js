@@ -18,6 +18,8 @@
 		validatedPageCount: 0,
 		canImport: false,
 		managedLoaded: false,
+		managedPages: [],
+		managedSort: loadManagedSort(),
 	};
 
 	const elements = {
@@ -434,20 +436,87 @@
 		return fallback;
 	}
 
-	function selectedSourceIds() {
-		return Array.from( elements.managedTable.querySelectorAll( 'tbody input[data-source-id]:checked' ) ).map( function ( input ) {
-			return input.dataset.sourceId;
+	function loadManagedSort() {
+		try {
+			const stored = JSON.parse( window.localStorage.getItem( 'contentFactoryManagedSort' ) || '{}' );
+			const keys = [ 'title', 'sourceId', 'path', 'status', 'validationStatus', 'lastImport', 'lastValidation', 'warningsCount' ];
+			if ( keys.includes( stored.key ) && [ 'asc', 'desc' ].includes( stored.direction ) ) {
+				return stored;
+			}
+		} catch ( error ) {
+			// Storage may be unavailable in hardened browser modes.
+		}
+		return { key: 'path', direction: 'asc' };
+	}
+
+	function saveManagedSort() {
+		try {
+			window.localStorage.setItem( 'contentFactoryManagedSort', JSON.stringify( state.managedSort ) );
+		} catch ( error ) {
+			// Sorting still works for the current page when storage is unavailable.
+		}
+	}
+
+	function managedSortValue( page, key ) {
+		const fields = {
+			title: [ 'title', 'post_title' ],
+			sourceId: [ 'sourceId', 'source_id' ],
+			path: [ 'path', 'path' ],
+			status: [ 'status', 'post_status' ],
+			validationStatus: [ 'validationStatus', 'validation_status' ],
+			lastImport: [ 'lastImport', 'last_import' ],
+			lastValidation: [ 'lastValidation', 'last_validation' ],
+			warningsCount: [ 'warningsCount', 'warnings_count' ],
+		};
+		const field = fields[ key ] || fields.path;
+		return managedValue( page, field[ 0 ], field[ 1 ], 'warningsCount' === key ? 0 : '' );
+	}
+
+	function sortedManagedPages( pages ) {
+		const direction = 'desc' === state.managedSort.direction ? -1 : 1;
+		return pages.slice().sort( function ( left, right ) {
+			const leftValue = managedSortValue( left, state.managedSort.key );
+			const rightValue = managedSortValue( right, state.managedSort.key );
+			let comparison = 'warningsCount' === state.managedSort.key
+				? Number( leftValue ) - Number( rightValue )
+				: String( leftValue ).localeCompare( String( rightValue ), 'ru', { numeric: true, sensitivity: 'base' } );
+			if ( 0 === comparison ) {
+				comparison = String( managedSortValue( left, 'sourceId' ) ).localeCompare( String( managedSortValue( right, 'sourceId' ) ) );
+			}
+			return comparison * direction;
 		} );
 	}
 
-	function selectedPageSummaries() {
-		return Array.from( elements.managedTable.querySelectorAll( 'tbody input[data-source-id]:checked' ) ).map( function ( input ) {
-			const cells = input.closest( 'tr' ).cells;
-			return {
-				sourceId: input.dataset.sourceId,
-				title: cells[ 1 ] ? cells[ 1 ].innerText.trim() : input.dataset.sourceId,
-				warnings: cells[ 8 ] ? Number( cells[ 8 ].innerText.trim() ) || 0 : 0,
+	function managedSortHeading( definition ) {
+		const active = state.managedSort.key === definition.key;
+		const cell = element( 'th', 'manage-column ' + ( active ? 'sorted ' + state.managedSort.direction : 'sortable desc' ) );
+		cell.scope = 'col';
+		cell.setAttribute( 'aria-sort', active ? ( 'asc' === state.managedSort.direction ? 'ascending' : 'descending' ) : 'none' );
+		const link = element( 'a' );
+		link.href = '#';
+		link.appendChild( element( 'span', '', definition.label ) );
+		const indicators = element( 'span', 'sorting-indicators' );
+		indicators.setAttribute( 'aria-hidden', 'true' );
+		indicators.appendChild( element( 'span', 'sorting-indicator asc' ) );
+		indicators.appendChild( element( 'span', 'sorting-indicator desc' ) );
+		link.appendChild( indicators );
+		link.addEventListener( 'click', function ( event ) {
+			event.preventDefault();
+			const selected = new Set( selectedSourceIds() );
+			state.managedSort = {
+				key: definition.key,
+				direction: active && 'asc' === state.managedSort.direction ? 'desc' : 'asc',
 			};
+			saveManagedSort();
+			renderManagedPages( state.managedPages, selected );
+		} );
+		cell.appendChild( link );
+		return cell;
+	}
+
+	function selectedSourceIds() {
+		return Array.from( elements.managedTable.querySelectorAll( 'tbody input[data-source-id]:checked' ) ).map( function ( input ) {
+			return input.dataset.sourceId;
 		} );
 	}
 
@@ -461,7 +530,7 @@
 		}
 	}
 
-	function renderManagedPages( pages ) {
+	function renderManagedPages( pages, selectedSourceIdsToRestore ) {
 		if ( ! pages.length ) {
 			elements.managedTable.replaceChildren( element( 'p', 'cf-empty-state', 'Управляемых страниц пока нет.' ) );
 			elements.publishControls.hidden = true;
@@ -478,16 +547,17 @@
 		selectAll.setAttribute( 'aria-label', 'Выбрать все управляемые страницы' );
 		selectHead.appendChild( selectAll );
 		headRow.appendChild( selectHead );
-		[ 'Заголовок', 'sourceId', 'Путь', 'Статус', 'Проверка', 'Последний импорт', 'Последняя проверка', 'Warnings', 'Действия' ].forEach( function ( heading ) {
-			const cell = element( 'th', 'manage-column', heading );
-			cell.scope = 'col';
-			headRow.appendChild( cell );
+		[ [ 'title', 'Заголовок' ], [ 'sourceId', 'sourceId' ], [ 'path', 'Путь' ], [ 'status', 'Статус' ], [ 'validationStatus', 'Проверка' ], [ 'lastImport', 'Последний импорт' ], [ 'lastValidation', 'Последняя проверка' ], [ 'warningsCount', 'Warnings' ] ].forEach( function ( definition ) {
+			headRow.appendChild( managedSortHeading( { key: definition[ 0 ], label: definition[ 1 ] } ) );
 		} );
+		const actionsHeading = element( 'th', 'manage-column', 'Действия' );
+		actionsHeading.scope = 'col';
+		headRow.appendChild( actionsHeading );
 		head.appendChild( headRow );
 		table.appendChild( head );
 
 		const body = element( 'tbody' );
-		pages.forEach( function ( page, index ) {
+		sortedManagedPages( pages ).forEach( function ( page, index ) {
 			const sourceId = String( managedValue( page, 'sourceId', 'source_id', '' ) );
 			const title = String( managedValue( page, 'title', 'post_title', sourceId || 'Без заголовка' ) );
 			const row = element( 'tr' );
@@ -498,8 +568,8 @@
 			checkbox.dataset.sourceId = sourceId;
 			checkbox.id = 'cf-page-' + index;
 			checkbox.disabled = ! sourceId
-				|| 'draft' !== String( managedValue( page, 'status', 'post_status', '' ) )
-				|| 'valid' !== String( managedValue( page, 'validationStatus', 'validation_status', '' ) );
+				|| 'draft' !== String( managedValue( page, 'status', 'post_status', '' ) );
+			checkbox.checked = ! checkbox.disabled && !! selectedSourceIdsToRestore && selectedSourceIdsToRestore.has( sourceId );
 			checkbox.setAttribute( 'aria-label', 'Выбрать страницу «' + title + '»' );
 			selectCell.appendChild( checkbox );
 			row.appendChild( selectCell );
@@ -563,6 +633,7 @@
 		try {
 			const response = await wp.apiFetch( { path: '/content-factory/v1/pages', method: 'GET' } );
 			const pages = managedPages( response );
+			state.managedPages = pages;
 			renderManagedPages( pages );
 			showNotice( elements.managedStatus, pages.length ? 'Страницы загружены: ' + pages.length + '.' : '', 'success' );
 		} catch ( error ) {
@@ -596,19 +667,12 @@
 
 	async function publishSelected() {
 		const sourceIds = selectedSourceIds();
-		const summaries = selectedPageSummaries();
 		if ( ! sourceIds.length ) {
 			showNotice( elements.managedStatus, 'Выберите хотя бы одну страницу.', 'error' );
 			return;
 		}
 		if ( ! elements.reviewConfirmed.checked ) {
-			showNotice( elements.managedStatus, 'Подтвердите, что выбранные страницы проверены.', 'error' );
-			return;
-		}
-		const confirmation = 'Финальная проверка и публикация:\n\n' + summaries.map( function ( page ) {
-			return '- ' + page.title + ' [' + page.sourceId + ']' + ( page.warnings ? ', warnings: ' + page.warnings : '' );
-		} ).join( '\n' );
-		if ( ! window.confirm( confirmation ) ) {
+			showNotice( elements.managedStatus, 'Подтвердите, что вы ознакомились с выбранными страницами.', 'error' );
 			return;
 		}
 

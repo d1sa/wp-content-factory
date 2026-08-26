@@ -152,17 +152,16 @@ final class AdminPage {
 					</button>
 				</div>
 				<div id="cf-managed-status" class="cf-status-region" role="status" aria-live="polite"></div>
-				<div id="cf-managed-table" class="cf-table-wrap"></div>
-
 				<div class="cf-publish-controls" id="cf-publish-controls" hidden>
 					<label for="cf-review-confirmed">
 						<input type="checkbox" id="cf-review-confirmed">
-						<?php echo esc_html__( 'Я проверил выбранные страницы', 'content-factory' ); ?>
+						<?php echo esc_html__( 'Я ознакомился с выбранными страницами', 'content-factory' ); ?>
 					</label>
 					<button type="button" class="button button-primary" id="cf-publish-selected" disabled>
 						<?php echo esc_html__( 'Опубликовать выбранные', 'content-factory' ); ?>
 					</button>
 				</div>
+				<div id="cf-managed-table" class="cf-table-wrap"></div>
 			</section>
 		</div>
 		<?php
