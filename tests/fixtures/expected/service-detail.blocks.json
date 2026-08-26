@@ -245,7 +245,7 @@
                 "blockName": "potolki/inner-parent-link",
                 "attrs": {
                     "label": "Продолжить выбор",
-                    "linkLabel": "← Все варианты раздела",
+                    "linkLabel": "Все варианты раздела",
                     "linkUrl": "/uslugi/vidy-potolkov/"
                 },
                 "innerBlocks": [],
