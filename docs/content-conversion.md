@@ -112,17 +112,19 @@ The service area before the public marker is not publishable. Recognized SEO ass
 
 Inside public content, exclusion is deliberately narrow. Only the exact top-level headings `МИНИМАЛЬНАЯ ПЕРЕЛИНКОВКА`, `ПЕРЕЛИНКОВКА НА РОДИТЕЛЬСКОЙ СТРАНИЦЕ`, `ДОПОЛНИТЕЛЬНАЯ ПЕРЕЛИНКОВКА В КОНЦЕ СТРАНИЦЫ`, `СВЯЗАННЫЕ РАЗДЕЛЫ`, `ВАЖНО ДЛЯ SEO`, `ВАЖНО ПО СКРЫТОЙ НИШЕ`, and `ВАЖНО: НЕ СОЗДАЁМ SEO-ДУБЛИ` are service sections. The exact level-two headings `ТЕХНИЧЕСКОЕ ЗАДАНИЕ`, `ТЕХНИЧЕСКОЕ ЗАДАНИЕ НА БЛОК`, `ВАЖНО ДЛЯ КОНТЕНТ-МЕНЕДЖЕРА`, and `ВАЖНО ДЛЯ SEO` are service subsections. Other headings beginning with words such as `ВАЖНО` or `КОММЕНТАР` remain public. Inspect every explicit exclusion in `excludedServiceContent`.
 
-A CTA with `Форма` is converted to the plugin's `form` variant and cannot carry action URLs. The `links` variant requires two actions with resolvable links. A single linked action, a URL on a form action, or a third action is retained in a blocking gap instead of being silently discarded.
+A CTA with `Форма` is converted to the plugin's `form` variant. Its button submits the embedded form through the theme's JavaScript and does not open a modal or navigate to an action URL. When `Ссылка / действие формы` exactly matches the profile's `policies.modalTriggerPath` (a trailing slash in the Markdown source is optional), that legacy modal target is therefore recognized and intentionally omitted for this variant. Other form action URLs remain blocking gaps instead of being silently discarded.
+
+The `links` variant requires two actions with resolvable links. The legacy modal route keeps its normal modal-opening meaning when used by a link CTA or another link outside an embedded form. A single linked action or a third action is retained in a blocking gap instead of being silently discarded.
 
 Do not invent facts, prices, guarantees, contacts, URLs, assets, or missing content. Record unresolved requirements as `CONTENT_GAP`, `LINK_GAP`, `ASSET_GAP`, or `ADAPTER_GAP`.
 
 ## Links and assets
 
 - Prefer links to another source in the same complete tree; they resolve by `page.sourceId`.
-- A relative/internal path must resolve to the same batch. Unknown internal routes produce `LINK_GAP`.
+- A relative/internal path must resolve to the same batch, an existing WordPress page, or an exact virtual path advertised by the profile. A safe unknown internal route produces `LINK_GAP` but remains in PageSpec so the WordPress compatibility report can name the missing path, block, and button instead of reporting only a missing action field.
 - Use external links only for intentional cross-site destinations allowed by the contract.
 - Use only asset refs advertised by the fresh Contract Bundle. Catalog images must be explicit; hero may use the contract's fallback.
-- The generated hero action targets `/forma-obratnoj-svyaz`. That path must resolve on the target WordPress runtime; JavaScript interception alone does not satisfy server-side validation.
+- The generated hero action uses the profile's `policies.modalTriggerPath`. For `potolki-inner` it is `/forma-obratnoj-svyaz/`: the theme intercepts that anchor and opens the modal, while the adapter advertises it as a virtual path so a separate WordPress page is not required.
 
 Fix the earliest root dependency error first: a broken parent can cascade into child incompatibilities.
 

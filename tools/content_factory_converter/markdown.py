@@ -229,7 +229,19 @@ def article_nodes(
         if skip_technical:
             index += 1
             continue
-        if not line or line == "---":
+        if not line:
+            flush_paragraph()
+            if list_items:
+                probe = index + 1
+                while probe < len(lines) and not lines[probe].strip():
+                    probe += 1
+                following = re.match(r"^([-*]|\d+\.)\s+(.+)$", lines[probe].strip()) if probe < len(lines) else None
+                following_style = "ordered" if following and following.group(1)[0].isdigit() else "unordered"
+                if not following or following_style != list_style:
+                    flush_list()
+            index += 1
+            continue
+        if line == "---":
             flush_paragraph()
             flush_list()
             index += 1

@@ -1,14 +1,14 @@
 {
     "profileId": "potolki-inner",
-    "profileVersion": "2.1.0",
-    "manifestHash": "sha256:197a0837db71bba171545c29783eb95436109da927b6c51304d3b0ef7e6cb6b8",
+    "profileVersion": "2.2.0",
+    "manifestHash": "sha256:608335fdb3b12201fa135e37a796d75f1f90cf194ea6f397da660ab531c329db",
     "selfCheck": {
         "status": "compatible",
         "issues": [],
         "profileId": "potolki-inner",
-        "profileVersion": "2.1.0",
+        "profileVersion": "2.2.0",
         "siteDefaultsVersion": "1.1.0",
-        "manifestHash": "sha256:197a0837db71bba171545c29783eb95436109da927b6c51304d3b0ef7e6cb6b8"
+        "manifestHash": "sha256:608335fdb3b12201fa135e37a796d75f1f90cf194ea6f397da660ab531c329db"
     },
     "fixtures": {
         "service-detail": {
@@ -17,10 +17,20 @@
                 {
                     "code": "GENERATED_AGAINST_MISMATCH",
                     "severity": "warning",
+                    "path": "/generatedAgainst/profileVersion",
+                    "sourceId": "042-matovye-potolki",
+                    "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
+                    "expected": "2.2.0",
+                    "suggestion": "",
+                    "docsRef": ""
+                },
+                {
+                    "code": "GENERATED_AGAINST_MISMATCH",
+                    "severity": "warning",
                     "path": "/generatedAgainst/manifestHash",
                     "sourceId": "042-matovye-potolki",
                     "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
-                    "expected": "sha256:197a0837db71bba171545c29783eb95436109da927b6c51304d3b0ef7e6cb6b8",
+                    "expected": "sha256:608335fdb3b12201fa135e37a796d75f1f90cf194ea6f397da660ab531c329db",
                     "suggestion": "",
                     "docsRef": ""
                 }
@@ -33,10 +43,20 @@
                 {
                     "code": "GENERATED_AGAINST_MISMATCH",
                     "severity": "warning",
+                    "path": "/generatedAgainst/profileVersion",
+                    "sourceId": "001-vidy-potolkov",
+                    "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
+                    "expected": "2.2.0",
+                    "suggestion": "",
+                    "docsRef": ""
+                },
+                {
+                    "code": "GENERATED_AGAINST_MISMATCH",
+                    "severity": "warning",
                     "path": "/generatedAgainst/manifestHash",
                     "sourceId": "001-vidy-potolkov",
                     "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
-                    "expected": "sha256:197a0837db71bba171545c29783eb95436109da927b6c51304d3b0ef7e6cb6b8",
+                    "expected": "sha256:608335fdb3b12201fa135e37a796d75f1f90cf194ea6f397da660ab531c329db",
                     "suggestion": "",
                     "docsRef": ""
                 }

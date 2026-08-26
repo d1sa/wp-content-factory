@@ -65,6 +65,23 @@ def normalize_path(value: str) -> str:
     return "/" + path.strip("/") + "/" if path.strip("/") else "/"
 
 
+def modal_trigger_path(bundle: Dict[str, Any]) -> str:
+    value = clean_value(bundle.get("policies", {}).get("modalTriggerPath", ""))
+    parsed = urlparse(value)
+    if (not value.startswith("/") or not value.endswith("/") or parsed.scheme or parsed.netloc
+            or parsed.params or parsed.query or parsed.fragment):
+        raise ConversionError("Contract Bundle policies.modalTriggerPath must be a plain absolute path ending with '/'.")
+    return normalize_path(value)
+
+
+def is_inline_form_modal_target(value: str, bundle: Dict[str, Any]) -> bool:
+    """Recognize the profile-declared modal route only when it is a plain internal path."""
+    parsed = urlparse(clean_value(value))
+    if parsed.scheme or parsed.netloc or parsed.params or parsed.query or parsed.fragment:
+        return False
+    return normalize_path(parsed.path) == modal_trigger_path(bundle)
+
+
 def stable_source_id(relative_path: str, filename: str, explicit_uuid: str = "") -> Tuple[str, Optional[str]]:
     explicit = explicit_uuid.strip()
     explicit_match = UUID_V4_RE.fullmatch(explicit) if explicit else None
@@ -127,9 +144,26 @@ class DescriptorResolver:
             for item in variants if isinstance(item, dict)
         }
 
+    def unresolved_internal_path(self, target: str) -> str:
+        """Keep a safe unresolved route so runtime diagnostics can name it."""
+        parsed = urlparse(target)
+        is_internal = bool(parsed.hostname and parsed.hostname.lower() in self.internal_hosts)
+        is_relative_path = not parsed.scheme and not parsed.netloc and target.startswith("/") and not target.startswith("//")
+        if not is_internal and not is_relative_path:
+            return ""
+        path = normalize_path(parsed.path)
+        if not path or re.match(r"^/(?:javascript|data|vbscript):", path, re.I):
+            return ""
+        if parsed.query:
+            path += "?" + parsed.query
+        if parsed.fragment:
+            path += "#" + parsed.fragment
+        return path
+
     def link(self, label: str, target: str, section: str = "") -> Optional[Dict[str, Any]]:
         target = clean_value(target)
         descriptor: Optional[Dict[str, Any]] = None
+        unresolved_path = ""
         if not target or target == "#":
             descriptor = None
         elif target.startswith("tel:") and "tel" in self.link_kinds:
@@ -145,11 +179,23 @@ class DescriptorResolver:
             is_relative = not parsed.scheme and not parsed.netloc
             if path in self.source_by_path and (is_relative or is_internal) and "page" in self.link_kinds:
                 descriptor = {"kind": "page", "sourceId": self.source_by_path[path]}
+            elif path == modal_trigger_path(self.bundle) and is_relative and "path" in self.link_kinds:
+                descriptor = {"kind": "path", "path": path}
             else:
                 external_allowed = self.bundle["policies"].get("externalLinks", True) is not False
                 if parsed.scheme in ("http", "https") and parsed.netloc and not is_internal and external_allowed and "external" in self.link_kinds:
                     descriptor = {"kind": "external", "url": target, "newTab": False}
+                elif "path" in self.link_kinds:
+                    unresolved_path = self.unresolved_internal_path(target)
+                    if unresolved_path:
+                        descriptor = {"kind": "path", "path": unresolved_path}
         if descriptor and not validate_schema(descriptor, self.link_schema):
+            if unresolved_path:
+                self.gaps.add(
+                    "LINK_GAP", self.source_id,
+                    "Internal link target was preserved in PageSpec but is not resolvable through the current batch.",
+                    section=section, label=label, target=target,
+                )
             return descriptor
         self.gaps.add(
             "LINK_GAP", self.source_id,
@@ -168,12 +214,22 @@ class DescriptorResolver:
         path = normalize_path(target)
         if path in self.source_by_path and (is_relative or is_internal):
             return "[%s](%s)" % (label, path)
+        if path == modal_trigger_path(self.bundle) and is_relative:
+            return "[%s](%s)" % (label, path)
         if target == "#request":
             return "[%s](#request)" % label
         if target.startswith(("tel:", "mailto:")):
             return "[%s](%s)" % (label, target)
         if parsed.scheme in ("http", "https") and parsed.netloc and not is_internal and self.bundle["policies"].get("externalLinks", True) is not False:
             return "[%s](%s)" % (label, target)
+        unresolved_path = self.unresolved_internal_path(target)
+        if unresolved_path:
+            self.gaps.add(
+                "LINK_GAP", self.source_id,
+                "Unknown internal inline link was preserved so runtime diagnostics can name its path.",
+                section=section, label=label, target=target,
+            )
+            return "[%s](%s)" % (label, unresolved_path)
         self.gaps.add(
             "LINK_GAP", self.source_id,
             "Inline link target is unknown; its public label was preserved without a link.",
@@ -411,7 +467,7 @@ def _build_cta(top: TopSection, resolver: DescriptorResolver, gaps: GapRegistry,
                 )
         else:
             for label, target in actions:
-                if clean_value(target):
+                if clean_value(target) and not is_inline_form_modal_target(target, resolver.bundle):
                     gaps.add(
                         "ADAPTER_GAP", source_id,
                         "The current plugin form CTA cannot consume an action URL; the URL was retained in this blocking gap.",
@@ -632,7 +688,7 @@ def _build_page(record: SourceRecord, bundle: Dict[str, Any], source_by_path: Di
         "lead": [sanitize_inline(text, lambda label, target: resolver.inline(label, target, hero_source.title), lambda alt, target: resolver.image_text(alt, target, hero_source.title)) for text in intro],
         "primaryAction": {
             "label": first_cta_label,
-            "link": {"kind": "path", "path": "/forma-obratnoj-svyaz"},
+            "link": {"kind": "path", "path": modal_trigger_path(bundle)},
         },
     }
     hero_ref = explicit_hero_asset["ref"] if explicit_hero_asset else str(bundle["policies"].get("heroImageFallback", ""))

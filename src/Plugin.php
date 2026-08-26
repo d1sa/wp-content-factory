@@ -23,6 +23,11 @@ use ContentFactory\WordPress\YoastAdapter;
 defined( 'ABSPATH' ) || exit;
 
 final class Plugin {
+	private const ADMINISTRATOR_CAPABILITIES = array(
+		'content_factory_import_pages',
+		'content_factory_publish_pages',
+	);
+
 	private static ?self $instance = null;
 	private bool $booted = false;
 
@@ -32,16 +37,24 @@ final class Plugin {
 
 	public static function activate(): void {
 		OperationLogger::install();
-		foreach ( array( 'administrator' ) as $role_name ) {
-			$role = get_role( $role_name );
-			if ( $role ) {
-				$role->add_cap( 'content_factory_import_pages' );
-				$role->add_cap( 'content_factory_publish_pages' );
-			}
-		}
+		self::ensure_administrator_capabilities();
 		add_option( 'content_factory_publish_policy', 'manager_only', '', false );
 		if ( ! wp_next_scheduled( 'content_factory_cleanup_logs' ) ) {
 			wp_schedule_event( time() + DAY_IN_SECONDS, 'daily', 'content_factory_cleanup_logs' );
+		}
+	}
+
+	/** Restore required capabilities if a WordPress role update removed them. */
+	public static function ensure_administrator_capabilities(): void {
+		$role = get_role( 'administrator' );
+		if ( ! $role ) {
+			return;
+		}
+
+		foreach ( self::ADMINISTRATOR_CAPABILITIES as $capability ) {
+			if ( ! $role->has_cap( $capability ) ) {
+				$role->add_cap( $capability );
+			}
 		}
 	}
 
@@ -54,6 +67,7 @@ final class Plugin {
 			return;
 		}
 		$this->booted = true;
+		self::ensure_administrator_capabilities();
 		$adapters = new AdapterRegistry();
 		$adapters->register( new PotolkiInnerAdapter() );
 		do_action( 'content_factory_register_adapters', $adapters );

@@ -27,7 +27,7 @@ from content_factory_converter.cli import CONFIRM_PHRASE, main
 from content_factory_converter.contract import ContractError, contract_hash, occurrence, validate_contract
 from content_factory_converter.converter import ConversionError, convert, stable_source_id
 from content_factory_converter.http import HttpError, SameOriginRedirectHandler, WordPressClient
-from content_factory_converter.markdown import parse_document
+from content_factory_converter.markdown import article_nodes, parse_document
 from content_factory_converter.schema import validate as validate_schema
 from test_support import FIXTURES, make_contract
 
@@ -62,6 +62,20 @@ class MarkdownParserTests(unittest.TestCase):
         self.assertIn("СИНИЙ МАЯК", document.public_text)
         self.assertIn("Первый пункт списка без сокращения", document.public_text)
         self.assertIn("Полный текст второго шага", document.public_text)
+
+    def test_blank_lines_between_list_items_keep_one_list_node(self) -> None:
+        nodes, excluded = article_nodes(
+            "Вводный текст.\n\n- кухня;\n\n- ванная;\n\n- прихожая.\n\n1. первый шаг\n\n2. второй шаг\n\nЗавершение.",
+            lambda _label, _target: None,
+            lambda label, _target: label,
+            lambda alt, _target: alt,
+        )
+        self.assertEqual([], excluded)
+        self.assertEqual(["paragraph", "list", "list", "paragraph"], [node["type"] for node in nodes])
+        self.assertEqual("unordered", nodes[1]["style"])
+        self.assertEqual(["кухня;", "ванная;", "прихожая."], nodes[1]["items"])
+        self.assertEqual("ordered", nodes[2]["style"])
+        self.assertEqual(["первый шаг", "второй шаг"], nodes[2]["items"])
 
     def test_missing_uuid_uses_deterministic_fallback(self) -> None:
         first, external = stable_source_id("nested/page.md", "page.md")
@@ -109,6 +123,14 @@ class ContractTests(unittest.TestCase):
         weak_schema["contractHash"] = contract_hash(weak_schema)
         with self.assertRaises(ContractError):
             validate_contract(weak_schema)
+
+    def test_modal_trigger_path_must_be_a_plain_trailing_slash_path(self) -> None:
+        for value in ("/forma-obratnoj-svyaz", "https://example.test/forma-obratnoj-svyaz/", "/forma-obratnoj-svyaz/?from=hero"):
+            bundle = make_contract()
+            bundle["policies"]["modalTriggerPath"] = value
+            bundle["contractHash"] = contract_hash(bundle)
+            with self.assertRaisesRegex(ContractError, "modalTriggerPath"):
+                validate_contract(bundle)
 
     def test_missing_max_means_no_upper_limit(self) -> None:
         bundle = make_contract()
@@ -170,7 +192,7 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(3, len(hero["data"]["lead"]))
             self.assertIn("Третий публичный вводный абзац", hero["data"]["lead"][2])
             self.assertEqual(
-                {"kind": "path", "path": "/forma-obratnoj-svyaz"},
+                {"kind": "path", "path": "/forma-obratnoj-svyaz/"},
                 hero["data"]["primaryAction"]["link"],
             )
             detail_cta = next(section for section in detail["sections"] if section["type"] == "cta")
@@ -236,7 +258,7 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(11, len(faq["data"]["items"]))
             self.assertEqual("Вариант для детали", catalog["data"]["items"][0]["title"])
 
-    def test_unknown_link_and_asset_are_registered_without_invention(self) -> None:
+    def test_unknown_link_is_preserved_for_diagnostics_while_unknown_asset_is_not_invented(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             source = copy_source(root)
@@ -253,7 +275,7 @@ class ConversionTests(unittest.TestCase):
             self.assertGreater(report["gapCounts"]["ASSET_GAP"], 0)
             all_json = "\n".join(path.read_text(encoding="utf-8") for path in (root / "output").glob("seo-*.json"))
             self.assertNotIn('"ref": "not-in-contract"', all_json)
-            self.assertNotIn('"path": "/does-not-exist/"', all_json)
+            self.assertIn('"path": "/does-not-exist/"', all_json)
             self.assertIn("Неизвестная страница", all_json)
 
     def test_repeat_requires_force_and_preserves_sources_and_unrelated_wordpress_file(self) -> None:
@@ -354,6 +376,65 @@ class ConversionTests(unittest.TestCase):
             cta = next(section for section in page["sections"] if section["type"] == "cta")
             self.assertEqual("links", cta["data"]["variant"])
             self.assertEqual({"kind": "page", "sourceId": "seo-11111111-1111-4111-8111-111111111111"}, cta["data"]["primaryAction"]["link"])
+
+    def test_unresolved_internal_cta_paths_are_preserved_for_runtime_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = copy_source(root)
+            category = next(source.glob("Категория *.md"))
+            category.write_text(
+                category.read_text(encoding="utf-8").replace(
+                    "**Форма:**\nСтандартная форма сайта\n\n**Кнопка:**\nПолучить консультацию",
+                    "**Основная кнопка:**\nПосмотреть цены\n\n**URL:**\n`/ceny/`\n\n**Вторая кнопка:**\nБесплатный замер\n\n**URL:**\n`/besplatnyj-zamer/`",
+                ),
+                encoding="utf-8",
+            )
+            report = convert(source, root / "output", make_contract())
+            self.assertEqual("incompatible", report["status"])
+            link_gaps = [gap for gap in report["gaps"] if gap["type"] == "LINK_GAP"]
+            self.assertEqual({"/ceny/", "/besplatnyj-zamer/"}, {gap.get("target") for gap in link_gaps})
+            page = json.loads(next((root / "output").glob("seo-11111111-*.json")).read_text(encoding="utf-8"))
+            cta = next(section for section in page["sections"] if section["type"] == "cta")
+            self.assertEqual({"kind": "path", "path": "/ceny/"}, cta["data"]["primaryAction"]["link"])
+            self.assertEqual({"kind": "path", "path": "/besplatnyj-zamer/"}, cta["data"]["secondaryAction"]["link"])
+
+    def test_inline_form_ignores_legacy_modal_route_without_opening_modal(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = copy_source(root)
+            detail = next(source.rglob("Деталь *.md"))
+            detail.write_text(
+                detail.read_text(encoding="utf-8").replace(
+                    "**Кнопка:**\nОтправить заявку",
+                    "**Кнопка:**\nОтправить заявку\n\n**Ссылка / действие формы:**\n`/forma-obratnoj-svyaz/`",
+                ),
+                encoding="utf-8",
+            )
+            report = convert(source, root / "output", make_contract())
+            self.assertEqual("compatible", report["status"])
+            self.assertEqual(0, report["gapCounts"]["ADAPTER_GAP"])
+            page = json.loads(next((root / "output").glob("seo-22222222-*.json")).read_text(encoding="utf-8"))
+            cta = next(section for section in page["sections"] if section["type"] == "cta")
+            self.assertEqual("form", cta["data"]["variant"])
+            self.assertEqual({"label": "Отправить заявку"}, cta["data"]["primaryAction"])
+
+    def test_inline_form_keeps_other_action_urls_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = copy_source(root)
+            detail = next(source.rglob("Деталь *.md"))
+            detail.write_text(
+                detail.read_text(encoding="utf-8").replace(
+                    "**Кнопка:**\nОтправить заявку",
+                    "**Кнопка:**\nОтправить заявку\n\n**Ссылка / действие формы:**\n`/custom-form-handler/`",
+                ),
+                encoding="utf-8",
+            )
+            report = convert(source, root / "output", make_contract())
+            self.assertEqual("incompatible", report["status"])
+            gaps = [gap for gap in report["gaps"] if gap["type"] == "ADAPTER_GAP"]
+            self.assertEqual(1, len(gaps))
+            self.assertEqual("/custom-form-handler/", gaps[0]["target"])
 
     def test_third_cta_action_is_reported_instead_of_silently_dropped(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

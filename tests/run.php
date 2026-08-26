@@ -233,6 +233,41 @@ $runner->test(
 );
 
 $runner->test(
+	'administrator capabilities recover after a role update',
+	static function (): void {
+		$role = get_role( 'administrator' );
+		if ( ! $role instanceof WP_Role ) {
+			cf_skip( 'Administrator role is unavailable' );
+		}
+
+		$capabilities = array(
+			'content_factory_import_pages',
+			'content_factory_publish_pages',
+		);
+		$original = array();
+		foreach ( $capabilities as $capability ) {
+			$original[ $capability ] = $role->capabilities[ $capability ] ?? null;
+		}
+
+		try {
+			$role->remove_cap( 'content_factory_import_pages' );
+			ContentFactory\Plugin::ensure_administrator_capabilities();
+			foreach ( $capabilities as $capability ) {
+				cf_assert( $role->has_cap( $capability ), 'Administrator capability was not restored: ' . $capability );
+			}
+		} finally {
+			foreach ( $original as $capability => $grant ) {
+				if ( null === $grant ) {
+					$role->remove_cap( $capability );
+				} else {
+					$role->add_cap( $capability, (bool) $grant );
+				}
+			}
+		}
+	}
+);
+
+$runner->test(
 	'central version registry matches plugin headers, schemas, and profile authoring data',
 	static function () use ( $plugin_file ): void {
 		$plugin_source = (string) file_get_contents( $plugin_file );
@@ -385,6 +420,17 @@ $runner->test(
 );
 
 $runner->test(
+	'core warns only above the 85-character SEO title recommendation',
+	static function () use ( $core ): void {
+		$spec = cf_core_spec();
+		$spec['seo']['title'] = str_repeat( 'а', 85 );
+		cf_assert( ! in_array( 'SEO_TITLE_LENGTH', cf_issue_codes( $core->validate( $spec ) ), true ), 'An 85-character SEO Title produced a warning.' );
+		$spec['seo']['title'] .= 'б';
+		cf_assert_issue( $core->validate( $spec ), 'SEO_TITLE_LENGTH' );
+	}
+);
+
+$runner->test(
 	'core accepts only the registered PageSpec version with complete identity',
 	static function () use ( $core ): void {
 		$current = cf_core_spec();
@@ -407,6 +453,30 @@ $adapter = null;
 if ( class_exists( 'ContentFactory\\Adapter\\PotolkiInnerAdapter' ) ) {
 	$adapter = new ContentFactory\Adapter\PotolkiInnerAdapter( $links );
 }
+
+$runner->test(
+	'adapter resolves the profile modal trigger without a WordPress page',
+	static function () use ( $adapter ): void {
+		$spec = cf_load_fixture( 'service-detail' );
+		$spec['sections'][0]['data']['primaryAction']['link'] = array( 'kind' => 'path', 'path' => '/forma-obratnoj-svyaz/' );
+		$report = $adapter->validate( $spec, CF_Snapshot_Artifacts::context( $adapter, $spec ) );
+		cf_assert( ! in_array( 'INVALID_PATH', cf_issue_codes( $report ), true ), 'Modal trigger path format was rejected.' );
+		cf_assert( ! in_array( 'UNRESOLVED_LINK', cf_issue_codes( $report ), true ), 'Profile modal trigger path was unresolved.' );
+	}
+);
+
+$runner->test(
+	'adapter names a button whose required link is missing',
+	static function () use ( $adapter ): void {
+		$spec = cf_load_fixture( 'service-category' );
+		$last = count( $spec['sections'] ) - 1;
+		$label = (string) $spec['sections'][ $last ]['data']['primaryAction']['label'];
+		unset( $spec['sections'][ $last ]['data']['primaryAction']['link'] );
+		$report = $adapter->validate( $spec, CF_Snapshot_Artifacts::context( $adapter, $spec ) );
+		$messages = array_map( static fn( $issue ): string => (string) ( $issue->jsonSerialize()['message'] ?? '' ), $report->issues() );
+		cf_assert( in_array( sprintf( 'Блок «Финальный CTA»: для кнопки «%s» требуется ссылка.', $label ), $messages, true ), 'Required-link issue did not name the block and button.' );
+	}
+);
 
 $runner->test(
 	'adapter self-check matches the active theme registry',
@@ -1101,7 +1171,19 @@ $runner->test(
 		$missing = $links->resolve( array( 'kind' => 'path', 'path' => '/cf-never-exists/' ), array( 'verify_targets' => true ) );
 		$planned = $links->resolve( array( 'kind' => 'path', 'path' => '/cf-planned/' ), array( 'verify_targets' => true, 'batch_paths' => array( 'planned' => '/cf-planned/' ) ) );
 		cf_assert( is_wp_error( $missing ) && 'missing_path_link' === $missing->get_error_code(), 'Missing internal path was accepted.' );
+		cf_assert( str_contains( $missing->get_error_message(), '/cf-never-exists/' ), 'Missing-path error omitted the unresolved URL.' );
 		cf_assert( is_array( $planned ) && '/cf-planned/' === $planned['url'], 'Planned batch path was rejected.' );
+	}
+);
+
+$runner->test(
+	'link resolver accepts only explicitly declared virtual paths',
+	static function () use ( $links ): void {
+		$link = array( 'kind' => 'path', 'path' => '/forma-obratnoj-svyaz/' );
+		$missing = $links->resolve( $link, array( 'verify_targets' => true ) );
+		$virtual = $links->resolve( $link, array( 'verify_targets' => true, 'virtual_paths' => array( '/forma-obratnoj-svyaz/' ) ) );
+		cf_assert( is_wp_error( $missing ) && 'missing_path_link' === $missing->get_error_code(), 'Undeclared virtual path was accepted.' );
+		cf_assert( is_array( $virtual ) && '/forma-obratnoj-svyaz/' === $virtual['url'], 'Declared virtual path was rejected.' );
 	}
 );
 

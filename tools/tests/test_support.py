@@ -143,7 +143,7 @@ def make_contract() -> Dict[str, Any]:
             "hero-fallback": {"path": "assets/hero.jpg", "label": "Hero"},
             "card-detail": {"path": "assets/detail.jpg", "label": "Detail"},
         },
-        "policies": {"heroImageFallback": "hero-fallback", "externalAssets": False, "externalLinks": True},
+        "policies": {"heroImageFallback": "hero-fallback", "externalAssets": False, "externalLinks": True, "modalTriggerPath": "/forma-obratnoj-svyaz/"},
         "examples": [
             example("category-page", ["hero", "catalog", "article", "faq", "cta"]),
             example("detail-page", ["hero", "article", "steps", "faq", "cta"]),

@@ -32,7 +32,7 @@ final class LinkResolver {
 					return new \WP_Error( 'invalid_path', 'Внутренний path небезопасен.' );
 				}
 				if ( ! empty( $context['verify_targets'] ) && ! $this->path_exists( $path, $context ) ) {
-					return new \WP_Error( 'missing_path_link', 'Внутренний path не существует и не создаётся текущим batch.' );
+					return new \WP_Error( 'missing_path_link', sprintf( 'Внутренний путь «%s» не существует и не создаётся в текущем пакете.', $path ) );
 				}
 				return array( 'url' => $path, 'target' => '', 'rel' => '' );
 			case 'external':
@@ -55,6 +55,11 @@ final class LinkResolver {
 
 	private function path_exists( string $path, array $context ): bool {
 		$normalized = '/' . trim( (string) wp_parse_url( $path, PHP_URL_PATH ), '/' ) . '/';
+		foreach ( $context['virtual_paths'] ?? array() as $virtual_path ) {
+			if ( is_string( $virtual_path ) && $normalized === '/' . trim( $virtual_path, '/' ) . '/' ) {
+				return true;
+			}
+		}
 		foreach ( $context['batch_paths'] ?? array() as $planned ) {
 			if ( $normalized === '/' . trim( (string) $planned, '/' ) . '/' ) {
 				return true;

@@ -9,6 +9,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class CorePageSpecValidator {
 	private const TOP_LEVEL = array( 'schemaVersion', 'sourceId', 'pageType', 'generatedAgainst', 'target', 'post', 'seo', 'sections' );
+	private const SEO_TITLE_RECOMMENDED_MAX = 85;
 	private PageSpecSchemaRegistry $schemas;
 
 	public function __construct( ?PageSpecSchemaRegistry $schemas = null ) {
@@ -90,8 +91,8 @@ final class CorePageSpecValidator {
 				$report->add( ValidationIssue::error( 'REQUIRED_FIELD', '/seo/' . $field, 'SEO-поле должно быть непустой строкой.', $source_id, '', 'non-empty string' ) );
 			}
 		}
-		if ( isset( $seo['title'] ) && is_string( $seo['title'] ) && mb_strlen( $seo['title'] ) > 65 ) {
-			$report->add( ValidationIssue::warning( 'SEO_TITLE_LENGTH', '/seo/title', 'SEO Title длиннее рекомендуемых 65 символов.', $source_id, '', '<= 65 characters' ) );
+		if ( isset( $seo['title'] ) && is_string( $seo['title'] ) && mb_strlen( $seo['title'] ) > self::SEO_TITLE_RECOMMENDED_MAX ) {
+			$report->add( ValidationIssue::warning( 'SEO_TITLE_LENGTH', '/seo/title', 'SEO Title длиннее рекомендуемых 85 символов.', $source_id, '', '<= 85 characters' ) );
 		}
 		if ( isset( $seo['description'] ) && is_string( $seo['description'] ) && mb_strlen( $seo['description'] ) > 170 ) {
 			$report->add( ValidationIssue::warning( 'SEO_DESCRIPTION_LENGTH', '/seo/description', 'SEO Description длиннее рекомендуемых 170 символов.', $source_id, '', '<= 170 characters' ) );

@@ -317,7 +317,7 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 				$this->validate_inline_text( $text, $path . '/data/lead/' . $index, $source_id, $section_id, $link_context, true, $report );
 			}
 		}
-		$this->validate_action( $data['primaryAction'] ?? null, $path . '/data/primaryAction', $source_id, $section_id, true, $link_context, $report );
+		$this->validate_action( $data['primaryAction'] ?? null, $path . '/data/primaryAction', $source_id, $section_id, true, $link_context, $report, true, 'Первый экран (Hero)' );
 		if ( isset( $data['benefits'] ) && ! $this->is_string_list( $data['benefits'], 0, 3, true ) ) {
 			$report->add( ValidationIssue::error( 'INVALID_BENEFITS', $path . '/data/benefits', 'Hero benefits должен быть массивом до трёх непустых строк.', $source_id, $section_id, '0..3 strings' ) );
 		}
@@ -388,7 +388,7 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 				$report->add( ValidationIssue::error( 'INVALID_BUTTONS', $path . '/items', 'buttons.items должен быть непустым массивом.', $source_id, $section_id ) );
 			} else {
 				foreach ( $node['items'] as $index => $item ) {
-					$this->validate_action( $item, $path . '/items/' . $index, $source_id, $section_id, true, $link_context, $report );
+					$this->validate_action( $item, $path . '/items/' . $index, $source_id, $section_id, true, $link_context, $report, true, 'Текст статьи' );
 				}
 			}
 		} else {
@@ -415,7 +415,7 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 			$this->validate_required_string( $item, 'text', $item_path, $source_id, $section_id, $report );
 			$this->validate_inline_text( $item['title'] ?? '', $item_path . '/title', $source_id, $section_id, $link_context, false, $report );
 			$this->validate_inline_text( $item['text'] ?? '', $item_path . '/text', $source_id, $section_id, $link_context, false, $report );
-			$this->validate_action( $item['action'] ?? null, $item_path . '/action', $source_id, $section_id, true, $link_context, $report );
+			$this->validate_action( $item['action'] ?? null, $item_path . '/action', $source_id, $section_id, true, $link_context, $report, true, 'Каталог' );
 			if ( ! array_key_exists( 'image', $item ) ) {
 				$report->add( ValidationIssue::error( 'MISSING_REQUIRED_ASSET', $item_path . '/image', 'Изображение карточки обязательно.', $source_id, $section_id ) );
 			} else {
@@ -485,37 +485,40 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		if ( isset( $data['benefits'] ) && ! $this->is_string_list( $data['benefits'], 0, 2, true ) ) {
 			$report->add( ValidationIssue::error( 'INVALID_BENEFITS', $path . '/data/benefits', 'CTA benefits должен быть массивом до двух непустых строк.', $source_id, $section_id, '0..2 strings' ) );
 		}
-		$this->validate_action( $data['primaryAction'] ?? null, $path . '/data/primaryAction', $source_id, $section_id, 'links' === $variant, $link_context, $report );
+		$this->validate_action( $data['primaryAction'] ?? null, $path . '/data/primaryAction', $source_id, $section_id, 'links' === $variant, $link_context, $report, true, 'Финальный CTA' );
 		if ( 'form' === $variant && is_array( $data['primaryAction'] ?? null ) && array_key_exists( 'link', $data['primaryAction'] ) ) {
 			$report->add( ValidationIssue::error( 'UNUSED_CTA_LINK', $path . '/data/primaryAction/link', 'Form CTA не использует URL основной кнопки.', $source_id, $section_id, 'field omitted' ) );
 		}
 		if ( 'links' === $variant ) {
-			$this->validate_action( $data['secondaryAction'] ?? null, $path . '/data/secondaryAction', $source_id, $section_id, true, $link_context, $report, false );
+			$this->validate_action( $data['secondaryAction'] ?? null, $path . '/data/secondaryAction', $source_id, $section_id, true, $link_context, $report, false, 'Финальный CTA' );
 		} elseif ( isset( $data['secondaryAction'] ) ) {
 			$report->add( ValidationIssue::error( 'UNUSED_SECONDARY_ACTION', $path . '/data/secondaryAction', 'secondaryAction разрешён только для links CTA.', $source_id, $section_id, 'field omitted' ) );
 		}
 	}
 
-	private function validate_action( mixed $action, string $path, string $source_id, string $section_id, bool $link_required, array $link_context, CompatibilityReport $report, bool $supports_target = true ): void {
+	private function validate_action( mixed $action, string $path, string $source_id, string $section_id, bool $link_required, array $link_context, CompatibilityReport $report, bool $supports_target = true, string $block_label = '' ): void {
+		$block_prefix = '' !== $block_label ? sprintf( 'Блок «%s»: ', $block_label ) : '';
 		if ( ! is_array( $action ) || array_is_list( $action ) ) {
-			$report->add( ValidationIssue::error( 'INVALID_ACTION', $path, 'Action должен быть объектом.', $source_id, $section_id, 'object' ) );
+			$report->add( ValidationIssue::error( 'INVALID_ACTION', $path, $block_prefix . 'данные кнопки должны быть JSON-объектом.', $source_id, $section_id, 'object' ) );
 			return;
 		}
 		$this->reject_unknown( $action, array( 'label', 'link' ), $path, $source_id, $section_id, $report );
 		$this->validate_required_string( $action, 'label', $path, $source_id, $section_id, $report );
 		if ( $link_required && ! array_key_exists( 'link', $action ) ) {
-			$report->add( ValidationIssue::error( 'REQUIRED_LINK', $path . '/link', 'Для action требуется разрешимая ссылка.', $source_id, $section_id ) );
+			$label = is_string( $action['label'] ?? null ) && '' !== trim( $action['label'] ) ? trim( $action['label'] ) : 'без названия';
+			$report->add( ValidationIssue::error( 'REQUIRED_LINK', $path . '/link', $block_prefix . sprintf( 'для кнопки «%s» требуется ссылка.', $label ), $source_id, $section_id ) );
 			return;
 		}
 		if ( isset( $action['link'] ) ) {
-			$resolved = $this->validate_link( $action['link'], $path . '/link', $source_id, $section_id, $link_context, $report );
+			$label = is_string( $action['label'] ?? null ) ? trim( $action['label'] ) : '';
+			$resolved = $this->validate_link( $action['link'], $path . '/link', $source_id, $section_id, $link_context, $report, $block_label, $label );
 			if ( is_array( $resolved ) && ! $supports_target && '' !== ( $resolved['target'] ?? '' ) ) {
 				$report->add( ValidationIssue::error( 'UNSUPPORTED_LINK_TARGET', $path . '/link/newTab', 'Этот block mapping не поддерживает target/rel; newTab приведёт к потере данных.', $source_id, $section_id, 'newTab=false' ) );
 			}
 		}
 	}
 
-	private function validate_link( mixed $link, string $path, string $source_id, string $section_id, array $link_context, CompatibilityReport $report ): ?array {
+	private function validate_link( mixed $link, string $path, string $source_id, string $section_id, array $link_context, CompatibilityReport $report, string $block_label = '', string $button_label = '' ): ?array {
 		if ( ! is_array( $link ) || array_is_list( $link ) ) {
 			$report->add( ValidationIssue::error( 'INVALID_LINK', $path, 'Link должен быть объектом.', $source_id, $section_id, 'object' ) );
 			return null;
@@ -546,7 +549,12 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		}
 		$resolved = $this->link_resolver->resolve( $link, $link_context );
 		if ( is_wp_error( $resolved ) ) {
-			$report->add( ValidationIssue::error( 'UNRESOLVED_LINK', $path, $resolved->get_error_message(), $source_id, $section_id, 'resolvable link' ) );
+			$location = '' !== $block_label ? sprintf( 'Блок «%s»', $block_label ) : '';
+			if ( '' !== $button_label ) {
+				$location .= ( '' !== $location ? ', ' : '' ) . sprintf( 'кнопка «%s»', $button_label );
+			}
+			$message = ( '' !== $location ? $location . ': ' : '' ) . $resolved->get_error_message();
+			$report->add( ValidationIssue::error( 'UNRESOLVED_LINK', $path, $message, $source_id, $section_id, 'resolvable link' ) );
 			return null;
 		}
 		if ( '' === ( $resolved['url'] ?? '' ) || '#' === $resolved['url'] ) {
@@ -700,7 +708,7 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 			'badgeText'   => (string) ( $badge['text'] ?? '' ),
 			'noteTitle'   => (string) ( $note['title'] ?? '' ),
 			'noteText'    => (string) ( $note['text'] ?? '' ),
-			'noteUrl'     => (string) ( $note['url'] ?? '/forma-obratnoj-svyaz' ),
+			'noteUrl'     => (string) ( $note['url'] ?? '/forma-obratnoj-svyaz/' ),
 		);
 		if ( $lead_children ) {
 			$attributes['hasLeadBlocks'] = true;
@@ -894,6 +902,11 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 
 	private function link_context( array $spec, array $context ): array {
 		$context['anchors'] = array_values( array_unique( array_merge( $context['anchors'] ?? array(), array_filter( array_map( static fn( array $section ): string => is_string( $section['id'] ?? null ) ? $section['id'] : '', is_array( $spec['sections'] ?? null ) ? $spec['sections'] : array() ) ) ) ) );
+		$modal_trigger_path = $this->manifest['policies']['modalTriggerPath'] ?? '';
+		if ( is_string( $modal_trigger_path ) && '' !== $modal_trigger_path ) {
+			$virtual_paths = is_array( $context['virtual_paths'] ?? null ) ? $context['virtual_paths'] : array();
+			$context['virtual_paths'] = array_values( array_unique( array_merge( $virtual_paths, array( $modal_trigger_path ) ) ) );
+		}
 		if ( isset( $context['parent_url'], $spec['post']['parent']['sourceId'] ) ) {
 			$context['source_urls'][ $spec['post']['parent']['sourceId'] ] = $context['parent_url'];
 		}

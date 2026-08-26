@@ -133,6 +133,13 @@ def validate_contract(bundle: Any, etag: str = "") -> Dict[str, Any]:
         raise ContractError("Contract Bundle semanticProfileSchema must be an object.")
     if not isinstance(bundle.get("assets"), dict) or not isinstance(bundle.get("policies"), dict):
         raise ContractError("Contract Bundle assets and policies must be objects.")
+    modal_path = bundle["policies"].get("modalTriggerPath")
+    if modal_path is not None:
+        parsed_modal_path = urlparse(modal_path) if isinstance(modal_path, str) else None
+        if (not isinstance(modal_path, str) or not modal_path.startswith("/") or not modal_path.endswith("/")
+                or parsed_modal_path.scheme or parsed_modal_path.netloc or parsed_modal_path.params
+                or parsed_modal_path.query or parsed_modal_path.fragment):
+            raise ContractError("Contract Bundle policies.modalTriggerPath must be a plain absolute path ending with '/'.")
     return bundle
 
 

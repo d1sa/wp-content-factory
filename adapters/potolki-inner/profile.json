@@ -1,6 +1,6 @@
 {
   "profileSchemaVersion": "1.0",
-  "identity": {"profileId": "potolki-inner", "profileVersion": "2.1.0", "siteKey": "potolkinaveka40"},
+  "identity": {"profileId": "potolki-inner", "profileVersion": "2.2.0", "siteKey": "potolkinaveka40"},
   "compatibility": {"theme": {"stylesheet": ["potolki-wp"], "minVersion": "1.0.0"}},
   "postDefaults": {"postType": "page", "pageTemplate": "template-full-width.php", "status": "draft"},
   "pageTypes": {
@@ -92,7 +92,7 @@
       "categoryLabel": "Виды потолков",
       "tocLabel": "На странице",
       "phone": {"caption": "Консультация специалиста", "label": "+7 (920) 893-98-83", "url": "tel:+79208939883"},
-      "hero": {"benefits": ["Бесплатный замер", "Монтаж под ключ", "Гарантия по договору"], "badge": {"value": "12+ лет", "text": "опыта монтажа"}, "note": {"title": "Спроектируем целиком", "text": "Полотно, профиль, свет и карнизы", "url": "/forma-obratnoj-svyaz"}, "fallbackImageRef": "services-types"},
+      "hero": {"benefits": ["Бесплатный замер", "Монтаж под ключ", "Гарантия по договору"], "badge": {"value": "12+ лет", "text": "опыта монтажа"}, "note": {"title": "Спроектируем целиком", "text": "Полотно, профиль, свет и карнизы", "url": "/forma-obratnoj-svyaz/"}, "fallbackImageRef": "services-types"},
       "parentLink": {"label": "Продолжить выбор", "linkLabel": "← Все варианты раздела"},
       "cta": {"kicker": "Бесплатный расчёт", "benefits": ["Замерщик бесплатно", "Смета до начала работ"], "nameLabel": "Имя", "namePlaceholder": "Ваше имя", "phoneLabel": "Телефон", "phonePlaceholder": "+7 (___) ___-__-__", "phoneCtaLabel": "или позвоните: +7 (920) 893-98-83", "phoneCtaUrl": "tel:+79208939883", "formNote": "Нажимая кнопку, вы соглашаетесь с политикой обработки данных.", "ymCounterId": "111217601", "ymGoal": "new_lid"}
     }
@@ -107,5 +107,5 @@
     "room-kitchen": {"path": "assets/images/room-kitchen.jpg"}, "room-living": {"path": "assets/images/room-living.jpg"}, "room-bedroom": {"path": "assets/images/room-bedroom.jpg"}, "room-kids": {"path": "assets/images/room-kids.jpg"}, "room-bathroom": {"path": "assets/images/room-bathroom.jpg"}, "room-hallway": {"path": "assets/images/room-hallway.jpg"}, "room-balcony": {"path": "assets/images/room-balcony.jpg"},
     "solution-basic": {"path": "assets/images/solution-basic.jpg"}, "solution-chandelier": {"path": "assets/images/solution-chandelier.jpg"}, "solution-floating": {"path": "assets/images/solution-floating.jpg"}, "solution-lighting": {"path": "assets/images/solution-lighting.jpg"}, "solution-niche": {"path": "assets/images/solution-niche.jpg"}, "solution-shadow": {"path": "assets/images/solution-shadow.jpg"}
   },
-  "policies": {"articleHeadingLevels": [3, 4], "stepsItems": {"min": 1}, "faqItems": {"min": 1}, "catalogItems": {"min": 1}, "externalAssets": false, "catalogImageRequired": true, "catalogImageMayBeDecorative": true, "heroImageFallback": "services-types"}
+  "policies": {"articleHeadingLevels": [3, 4], "stepsItems": {"min": 1}, "faqItems": {"min": 1}, "catalogItems": {"min": 1}, "externalAssets": false, "catalogImageRequired": true, "catalogImageMayBeDecorative": true, "heroImageFallback": "services-types", "modalTriggerPath": "/forma-obratnoj-svyaz/"}
 }
