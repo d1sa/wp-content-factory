@@ -12,6 +12,7 @@ use ContentFactory\Engine\TransformRegistry;
 use ContentFactory\Profile\CompiledProfile;
 use ContentFactory\Profile\ProfileCompiler;
 use ContentFactory\Resolve\LinkResolver;
+use ContentFactory\Validation\PageSpecSchemaRegistry;
 use ContentFactory\Validation\SemanticSchemaValidator;
 
 defined( 'ABSPATH' ) || exit;
@@ -96,8 +97,8 @@ final class PotolkiInnerAdapter implements ThemeAdapterInterface {
 		$report    = new CompatibilityReport();
 		$source_id = is_string( $spec['sourceId'] ?? null ) ? $spec['sourceId'] : '';
 		$schema_version = is_string( $spec['schemaVersion'] ?? null ) ? $spec['schemaVersion'] : '';
-		if ( '1.1' !== $schema_version ) {
-			$report->add( ValidationIssue::error( 'UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', 'Версия PageSpec не поддерживается профилем.', $source_id, '', '1.1' ) );
+		if ( PageSpecSchemaRegistry::CURRENT_VERSION !== $schema_version ) {
+			$report->add( ValidationIssue::error( 'UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', 'Версия PageSpec не поддерживается профилем.', $source_id, '', PageSpecSchemaRegistry::CURRENT_VERSION ) );
 		}
 		$this->validate_target( $spec, $source_id, $report );
 		$this->validate_generated_against( $spec, $source_id, $report );

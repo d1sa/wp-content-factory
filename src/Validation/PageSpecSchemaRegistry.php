@@ -2,10 +2,12 @@
 
 namespace ContentFactory\Validation;
 
+use ContentFactory\VersionRegistry;
+
 defined( 'ABSPATH' ) || exit;
 
 final class PageSpecSchemaRegistry {
-	public const CURRENT_VERSION = '1.1';
+	public const CURRENT_VERSION = VersionRegistry::PAGE_SPEC;
 
 	private string $schema_dir;
 	/** @var array<string,array<string,mixed>> */

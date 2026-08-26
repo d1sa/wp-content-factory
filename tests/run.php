@@ -93,7 +93,7 @@ function cf_assert_issue( ContentFactory\Contract\CompatibilityReport $report, s
 /** @return array<string,mixed> */
 function cf_core_spec(): array {
 	return array(
-		'schemaVersion' => '1.1',
+		'schemaVersion' => ContentFactory\Validation\PageSpecSchemaRegistry::CURRENT_VERSION,
 		'sourceId'      => 'cf-test-core-valid',
 		'pageType'      => 'service-detail',
 		'generatedAgainst' => array( 'profileId' => 'potolki-inner', 'profileVersion' => '2.0.0', 'manifestHash' => 'sha256:' . str_repeat( 'a', 64 ) ),
@@ -233,6 +233,29 @@ $runner->test(
 );
 
 $runner->test(
+	'central version registry matches plugin headers, schemas, and profile authoring data',
+	static function () use ( $plugin_file ): void {
+		$plugin_source = (string) file_get_contents( $plugin_file );
+		cf_assert( 1 === preg_match( '/^\s*\*\s*Version:\s*(\S+)\s*$/m', $plugin_source, $match ), 'Plugin Version header is missing.' );
+		cf_assert_same( ContentFactory\VersionRegistry::PLUGIN, $match[1], 'Plugin header version' );
+		cf_assert_same( ContentFactory\VersionRegistry::PLUGIN, CONTENT_FACTORY_VERSION, 'Runtime plugin version constant' );
+		cf_assert_same( ContentFactory\VersionRegistry::PAGE_SPEC, ContentFactory\Validation\PageSpecSchemaRegistry::CURRENT_VERSION, 'PageSpec registry version' );
+
+		$page_schema = cf_load_json_file( CONTENT_FACTORY_DIR . 'schemas/pagespec-' . ContentFactory\VersionRegistry::PAGE_SPEC . '.schema.json' );
+		cf_assert_same( ContentFactory\VersionRegistry::PAGE_SPEC, $page_schema['properties']['schemaVersion']['const'] ?? '', 'PageSpec schema identity' );
+
+		$contract_schema = cf_load_json_file( CONTENT_FACTORY_DIR . 'schemas/contract-bundle-' . ContentFactory\VersionRegistry::CONTRACT_BUNDLE . '.schema.json' );
+		cf_assert_same( ContentFactory\VersionRegistry::CONTRACT_BUNDLE, $contract_schema['properties']['contractVersion']['const'] ?? '', 'Contract Bundle schema identity' );
+		cf_assert_same( ContentFactory\VersionRegistry::PAGE_SPEC, $contract_schema['properties']['pageSpecVersion']['const'] ?? '', 'Contract Bundle PageSpec identity' );
+
+		$profile_schema = cf_load_json_file( CONTENT_FACTORY_DIR . 'schemas/theme-profile-' . ContentFactory\VersionRegistry::THEME_PROFILE_SCHEMA . '.schema.json' );
+		cf_assert_same( ContentFactory\VersionRegistry::THEME_PROFILE_SCHEMA, $profile_schema['properties']['profileSchemaVersion']['const'] ?? '', 'Theme profile schema identity' );
+		$profile = cf_load_json_file( CONTENT_FACTORY_DIR . 'adapters/potolki-inner/profile.json' );
+		cf_assert_same( ContentFactory\VersionRegistry::THEME_PROFILE_SCHEMA, $profile['profileSchemaVersion'] ?? '', 'Profile definition schema version' );
+	}
+);
+
+$runner->test(
 	'core accepts a minimal valid contract',
 	static function () use ( $core ): void {
 		cf_assert( ! $core->validate( cf_core_spec() )->has_errors(), 'Valid core PageSpec was rejected.' );
@@ -362,10 +385,10 @@ $runner->test(
 );
 
 $runner->test(
-	'core accepts only PageSpec 1.1 with complete identity',
+	'core accepts only the registered PageSpec version with complete identity',
 	static function () use ( $core ): void {
 		$current = cf_core_spec();
-		cf_assert( ! $core->validate( $current )->has_errors(), 'Complete PageSpec 1.1 identity was rejected.' );
+		cf_assert( ! $core->validate( $current )->has_errors(), 'Complete current PageSpec identity was rejected.' );
 		$old = $current;
 		$old['schemaVersion'] = '1.0';
 		cf_assert_issue( $core->validate( $old ), 'UNSUPPORTED_SCHEMA_VERSION' );
@@ -374,7 +397,7 @@ $runner->test(
 		cf_assert_issue( $missing, 'REQUIRED_FIELD' );
 		$current['target'] = array( 'siteKey' => 'potolkinaveka40', 'profileId' => 'potolki-inner' );
 		$current['generatedAgainst'] = array( 'profileId' => 'potolki-inner', 'profileVersion' => '2.0.0', 'manifestHash' => 'sha256:' . str_repeat( 'a', 64 ) );
-		cf_assert( ! $core->validate( $current )->has_errors(), 'Complete PageSpec 1.1 identity was rejected.' );
+		cf_assert( ! $core->validate( $current )->has_errors(), 'Complete current PageSpec identity was rejected.' );
 		$current['generatedAgainst']['manifestHash'] = str_repeat( 'a', 64 );
 		cf_assert_issue( $core->validate( $current ), 'INVALID_FORMAT' );
 	}

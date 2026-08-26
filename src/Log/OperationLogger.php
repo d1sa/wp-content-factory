@@ -2,10 +2,12 @@
 
 namespace ContentFactory\Log;
 
+use ContentFactory\VersionRegistry;
+
 defined( 'ABSPATH' ) || exit;
 
 final class OperationLogger {
-	private const DB_VERSION             = '1.0.0';
+	private const DB_VERSION             = VersionRegistry::OPERATION_LOG_DB;
 	private const DEFAULT_RETENTION_DAYS = 90;
 	private const MAX_JSON_BYTES         = 262144;
 

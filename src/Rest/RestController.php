@@ -16,11 +16,12 @@ use ContentFactory\Validation\PageSpecSchemaRegistry;
 use ContentFactory\WordPress\DraftManager;
 use ContentFactory\WordPress\PublishManager;
 use ContentFactory\WordPress\HashManager;
+use ContentFactory\VersionRegistry;
 
 defined( 'ABSPATH' ) || exit;
 
 final class RestController {
-	private const NS = 'content-factory/v1';
+	private const NS = VersionRegistry::REST_NAMESPACE;
 
 	public function __construct(
 		private AdapterRegistry $adapters,
@@ -477,7 +478,7 @@ final class RestController {
 			}
 			$value = json_decode( (string) file_get_contents( $file ), true );
 			if ( is_array( $value ) && ! array_is_list( $value ) ) {
-				$value['schemaVersion'] = '1.1';
+				$value['schemaVersion'] = PageSpecSchemaRegistry::CURRENT_VERSION;
 				$value['target'] = array( 'siteKey' => $profile->site_key(), 'profileId' => $profile->id() );
 				$value['generatedAgainst'] = array( 'profileId' => $profile->id(), 'profileVersion' => $profile->version(), 'manifestHash' => $profile->canonical_hash() );
 				$examples[] = $value;

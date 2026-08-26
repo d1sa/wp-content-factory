@@ -11,10 +11,13 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CONTENT_FACTORY_VERSION', '2.0.0' );
 define( 'CONTENT_FACTORY_FILE', __FILE__ );
 define( 'CONTENT_FACTORY_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CONTENT_FACTORY_URL', plugin_dir_url( __FILE__ ) );
+
+require_once CONTENT_FACTORY_DIR . 'src/VersionRegistry.php';
+
+define( 'CONTENT_FACTORY_VERSION', ContentFactory\VersionRegistry::PLUGIN );
 
 if ( ! function_exists( 'array_is_list' ) ) {
 	function array_is_list( array $array ): bool { // phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed

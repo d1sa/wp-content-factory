@@ -6,7 +6,7 @@ Each production adapter has one authoring file:
 
 `adapters/<profile-id>/profile.json`
 
-It is validated by `schemas/theme-profile-1.0.schema.json` and compiled by `ProfileCompiler`. Do not create a parallel runtime manifest or a second compatibility representation.
+It is validated by the schema selected through `VersionRegistry::THEME_PROFILE_SCHEMA` and compiled by `ProfileCompiler`. Do not create a parallel runtime manifest or a second compatibility representation. See [versioning.md](versioning.md) before changing any version axis.
 
 The profile defines:
 
@@ -21,7 +21,7 @@ The profile defines:
 9. versioned site defaults;
 10. public theme assets and policies.
 
-PageSpec version support is global and currently fixed at 1.1; it is not repeated in each profile.
+PageSpec version support is global and comes from `VersionRegistry::PAGE_SPEC`; it is not repeated in each profile.
 
 ## Adapter interface
 
@@ -43,9 +43,11 @@ Bump `identity.profileVersion` for a public semantic/profile contract change. `P
 
 The Contract Bundle adds its own `contractHash` and ETag. Generators copy the compiled profile identity and hash into PageSpec `generatedAgainst`.
 
-## Runtime validation
+## Runtime boundaries
 
-An adapter must validate the section schema plus domain behavior: link safety/resolution, asset policy, content-node structure, FAQ uniqueness, occurrence/order rules, parent resolution, and Registry compatibility. Build must reject an invalid spec and produce a lossless Gutenberg parse/serialize/render round-trip.
+An adapter owns profile-specific semantic validation and Block Tree construction: section data, content-node structure, FAQ uniqueness, occurrence/order rules, asset policy, mapper/Registry compatibility, and semantic link resolution through `LinkResolver`.
+
+`ContentPipeline` orchestrates core PageSpec validation, target context, hierarchy and WordPress conflict checks, page-template checks, serialization, Gutenberg parse round-trip, server rendering, and creation of one page's `BuildPlan`. `BatchRunner` validates the complete dependency graph and owns atomic writes and rollback. Adapter build must reject invalid semantic input; the pipeline verifies the resulting output.
 
 Keep current content defaults and declared asset fallbacks separate from compatibility code; they are normal profile semantics.
 
@@ -54,12 +56,12 @@ Keep current content defaults and declared asset fallbacks separate from compati
 - profile authoring schema passes;
 - compile result and hash are deterministic;
 - exact target selects one adapter; missing/wrong target fails;
-- PageSpec 1.0 fails explicitly;
+- a non-current PageSpec version fails explicitly;
 - Contract Bundle contains no secrets/private paths and examples validate;
 - every section and CTA variant builds correctly;
 - Registry attributes/parents/allowedBlocks match;
 - golden Block Tree and post-content snapshots pass;
-- 49-page regression corpus hashes pass;
+- regression corpus hashes pass;
 - batch validation and runtime failure leave no partial writes;
 - draft idempotency, rollback, revalidation, and publish guard pass.
 

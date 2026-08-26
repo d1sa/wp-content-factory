@@ -4,6 +4,8 @@ namespace ContentFactory\Profile;
 
 use ContentFactory\Engine\MapperDefinitionRegistry;
 use ContentFactory\Engine\TransformRegistry;
+use ContentFactory\Validation\PageSpecSchemaRegistry;
+use ContentFactory\VersionRegistry;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -116,7 +118,7 @@ final class ProfileCompiler {
 		return array(
 			'identity' => $configuration['identity'],
 			'compatibility' => $configuration['compatibility'],
-			'pageSpecVersion' => '1.1',
+			'pageSpecVersion' => PageSpecSchemaRegistry::CURRENT_VERSION,
 			'postDefaults' => $configuration['postDefaults'],
 			'pageTypes' => $configuration['pageTypes'],
 			'sections' => $sections,
@@ -130,7 +132,7 @@ final class ProfileCompiler {
 
 	private function validate_definition( array $definition ): void {
 		if ( defined( 'CONTENT_FACTORY_DIR' ) && function_exists( 'rest_validate_value_from_schema' ) ) {
-			$schema_path = CONTENT_FACTORY_DIR . 'schemas/theme-profile-1.0.schema.json';
+			$schema_path = CONTENT_FACTORY_DIR . 'schemas/theme-profile-' . VersionRegistry::THEME_PROFILE_SCHEMA . '.schema.json';
 			$schema = is_readable( $schema_path ) ? json_decode( (string) file_get_contents( $schema_path ), true ) : null;
 			if ( is_array( $schema ) ) {
 				$valid = rest_validate_value_from_schema( $definition, $schema, 'profile' );
@@ -144,7 +146,7 @@ final class ProfileCompiler {
 				throw new \RuntimeException( 'Profile definition не содержит ' . $key . '.' );
 			}
 		}
-		if ( '1.0' !== $definition['profileSchemaVersion'] ) {
+		if ( VersionRegistry::THEME_PROFILE_SCHEMA !== $definition['profileSchemaVersion'] ) {
 			throw new \RuntimeException( 'Неподдерживаемая версия profile definition.' );
 		}
 		foreach ( array( 'profileId', 'profileVersion', 'siteKey' ) as $key ) {

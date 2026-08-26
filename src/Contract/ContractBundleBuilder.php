@@ -4,11 +4,11 @@ namespace ContentFactory\Contract;
 
 use ContentFactory\Profile\CompiledProfile;
 use ContentFactory\Validation\PageSpecSchemaRegistry;
+use ContentFactory\VersionRegistry;
 
 defined( 'ABSPATH' ) || exit;
 
 final class ContractBundleBuilder {
-	private const CONTRACT_VERSION = '1.0';
 	private const REQUIRED_SOURCE_KEYS = array(
 		'identity',
 		'semanticProfileSchema',
@@ -54,7 +54,7 @@ final class ContractBundleBuilder {
 		}
 		$self_check_summary = $this->self_check_summary( $self_check );
 		$bundle = array(
-			'contractVersion'       => self::CONTRACT_VERSION,
+			'contractVersion'       => VersionRegistry::CONTRACT_BUNDLE,
 			'pageSpecVersion'       => $this->schemas->current_version(),
 			'identity'              => $identity,
 			'pageSpecSchema'        => $page_spec_schema,

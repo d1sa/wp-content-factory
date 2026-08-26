@@ -1,89 +1,140 @@
-# Markdown to PageSpec 1.1 conversion
+# Markdown conversion
 
-## Input contract
+This document owns the Markdown dialect and the readiness rules for repository-generated PageSpec packages. CLI syntax and artifact descriptions live in [`tools/README.md`](../../../../../tools/README.md); version rules live in [versioning.md](versioning.md).
 
-Fetch the current Contract Bundle immediately before conversion. Build every page against that exact response:
+## Contract setup
 
-```text
-GET /wp-json/content-factory/v1/contract?siteKey=potolkinaveka40&profileId=potolki-inner
+Before conversion, run the version checker and let the repository converter fetch a fresh Contract Bundle from the exact target runtime. The converter uses that response for:
+
+- `schemaVersion` from `pageSpecVersion`;
+- exact `target.siteKey` and `target.profileId`;
+- `generatedAgainst.profileId`, `profileVersion`, and `manifestHash`;
+- page types, semantic schemas, defaults, assets, and policies.
+
+Do not infer fields absent from the advertised PageSpec or semantic schemas. Do not copy versions or hashes from documentation, examples, earlier packages, or an old Contract Bundle.
+
+## Source file structure
+
+The converter reads a single service area followed by public content:
+
+```md
+# ПОДСКАЗКА ПО СОЗДАНИЮ СТРАНИЦЫ
+
+**UUID:**
+`<UUID_V4>`
+
+**Название страницы в WordPress:**
+<TITLE>
+
+**Родительская страница:**
+<PARENT_TITLE_OR_НЕТ>
+
+**Родительский URL:**
+`<PARENT_PATH>`
+
+**URL страницы:**
+`<DECLARED_PATH_OR_URL>`
+
+**Slug:**
+`<SLUG>`
+
+# SEO-НАСТРОЙКИ
+
+**Title:**
+<SEO_TITLE>
+
+**Description:**
+<SEO_DESCRIPTION>
+
+**H1:**
+<PUBLIC_H1>
+
+**Основной запрос:**
+<PRIMARY_QUERY>
+
+# СТРУКТУРА СТРАНИЦЫ
+
+# <PUBLIC_H1>
+
+<INTRODUCTORY_PARAGRAPHS>
 ```
 
-Set:
+`# КОНТЕНТ СТРАНИЦЫ` is also accepted as the public-content marker. The UUID in metadata and the UUID immediately before `.md`, when both are present, must be identical. Keep it stable across revisions.
 
-- `schemaVersion` to `1.1`;
-- `target` from `identity.siteKey` and `identity.profileId`;
-- `generatedAgainst` from `identity.profileId`, `identity.profileVersion`, and `identity.manifestHash`.
+The directory tree defines hierarchy. A child normally lives in the directory named after its parent Markdown file; the converter may also resolve `Родительский URL` against another source in the same complete tree. `URL страницы` or `Canonical` is used only to derive and diagnose the declared source path. The current converter does not emit `seo.canonical` into PageSpec.
 
-Do not infer fields not declared by `pageSpecSchema` or the semantic schema of the chosen section.
+## Supported public Markdown dialect
 
-## Structural mapping
+The converter is syntax-driven; headings must use the forms below. It does not classify a section from prose meaning alone.
 
-Preserve the Markdown document order and its logical section boundaries.
+| Source syntax | Output |
+| --- | --- |
+| First public `#` heading and all following paragraphs up to the next `#` | `hero`; every paragraph becomes one `lead` item |
+| Any later ordinary `#` section | `article` |
+| A section containing at least two `## 1. …`, `## 2. …` headings | `steps` |
+| `# ЧАСТЫЕ ВОПРОСЫ…` or exactly `# FAQ`, with questions as `##` | `faq` |
+| A section containing `## КАРТОЧКА …` blocks | `catalog` |
+| A `#` heading containing `ФИНАЛЬН`, starting with `CTA`, or containing `ЗАЯВК` | `cta` |
 
-| Markdown meaning | PageSpec section | Rule |
-| --- | --- | --- |
-| H1 and content before the next major heading | `hero` | `lead` contains every introductory paragraph in order |
-| Explanatory thematic section | `article` | Keep its heading and body nodes as one section |
-| Collection of linked service/product cards | `catalog` | Each source card becomes one item |
-| Ordered process or sequence | `steps` | Each source step becomes one item |
-| Explicit questions and answers | `faq` | Each source Q/A pair becomes one item |
-| Final or contextual conversion block | `cta` | Use the source position; do not force it to the end |
-| Explicit navigation to the parent | `parent-link` | Add only when the Markdown contains it; automatic parent navigation is profile behavior |
+Inside an article, paragraphs, `##`–`####` headings, ordered/unordered lists, and recognized button fields are supported. Raw HTML, fenced code, and Markdown images cannot be represented safely in article content and produce gaps. Inline links are restricted by the current resolver and contract; the only supported same-page anchor is `#request`.
 
-Use `article` for a section that does not semantically fit a specialized block. Do not merge adjacent headings, regroup chapters, truncate lists, or impose conversion limits. Limits exist only when explicitly present in the current Contract Bundle schema.
+Catalog cards use named fields such as `Заголовок`, `Описание`, `Кнопка`, `URL`/`Ссылка`, plus an explicit advertised asset:
 
-## Hero and actions
+```md
+## КАРТОЧКА 1
 
-`hero.data.lead` is an array containing all introductory paragraphs after H1 up to the next major heading. It is not limited to one or two paragraphs.
+**Заголовок:**
+<TITLE>
 
-The primary form action should resolve to `/forma-obratnoj-svyaz`. The theme JavaScript intercepts this URL and opens the modal. Use a path link descriptor, not an anchor invented by the converter.
+**Описание:**
+<TEXT>
 
-The hero note card uses the same modal route through the generated `noteUrl` block attribute. Content Factory supplies `/forma-obratnoj-svyaz` from the profile default; editors may replace that URL in the block toolbar later.
+**Кнопка:**
+<LABEL>
 
-## Article body
+**URL:**
+<TARGET>
 
-Represent article content with supported structured nodes:
+**Изображение:**
+`themeAsset:<CONTRACT_ASSET_REF>`
 
-- `paragraph` with inline text;
-- `heading` using profile-allowed levels;
-- `list` with ordered/unordered style and source items;
-- `buttons` with explicit action descriptors.
+**Alt:**
+<ALT_TEXT>
+```
 
-Preserve paragraph, heading, list, and button order. Inline emphasis and links use the supported text syntax; raw HTML, fenced code, and Markdown image syntax are rejected.
+The converter creates no `parent-link` semantic section. When `post.parent` exists, the profile supplies parent navigation during Block Tree construction.
+
+## Content preservation and exclusions
+
+For existing articles, preserve all ready public wording and its order. Do not shorten, summarize, rewrite, merge sections, or truncate paragraphs, lists, cards, steps, or FAQ items. Normal Markdown line wrapping may be normalized during parsing.
+
+The service area before the public marker is not publishable. Recognized SEO assignments, technical instructions, content-manager comments, and standalone Markdown export links are excluded. Export links are still checked as source dependencies. A technical note inside public content is excluded only when it uses a heading recognized by the converter; inspect `excludedServiceContent` in the report.
+
+Do not invent facts, prices, guarantees, contacts, URLs, assets, or missing content. Record unresolved requirements as `CONTENT_GAP`, `LINK_GAP`, `ASSET_GAP`, or `ADAPTER_GAP`.
 
 ## Links and assets
 
-Use typed link descriptors: `page`, `path`, `anchor`, `external`, `tel`, or `mailto`. Prefer `page.sourceId` for another page in the same package and `path` for an existing site route. Every anchor must match a section ID in the same page.
+- Prefer links to another source in the same complete tree; they resolve by `page.sourceId`.
+- A relative/internal path must resolve to the same batch. Unknown internal routes produce `LINK_GAP`.
+- Use external links only for intentional cross-site destinations allowed by the contract.
+- Use only asset refs advertised by the fresh Contract Bundle. Catalog images must be explicit; hero may use the contract's fallback.
+- The generated hero action targets `/forma-obratnoj-svyaz`. That path must resolve on the target WordPress runtime; JavaScript interception alone does not satisfy server-side validation.
 
-Use only asset descriptors and references advertised by the current contract. Catalog cards require images. Hero may use the profile's declared theme-asset fallback. Do not add arbitrary external images when the policy forbids them.
+Fix the earliest root dependency error first: a broken parent can cascade into child incompatibilities.
 
-## Target-runtime preflight
+## Package readiness
 
-Treat a package as environment-specific. Before building or importing it, record the exact WordPress base URL that will run validation, including its scheme, host, and port. Fetch the Contract Bundle from that runtime whenever possible.
+The repository converter emits one PageSpec JSON per source and a deterministic `pagespec.zip` containing only those JSON files. Validate the complete ZIP, not dependent pages individually.
 
-Apply these checks before sending the ZIP:
+A new package is ready for the repository CLI import workflow only when:
 
-1. Compute every hierarchical permalink from the planned parent and slug graph.
-2. Set `seo.canonical` to the exact permalink expected by the validation runtime. Scheme, host, port, path, and trailing slash must match. A production canonical such as `https://example.com/path/` is not valid for a package being checked by `http://localhost:8080`.
-3. Resolve every `path` descriptor against the target WordPress site or the same batch. A route handled only by theme JavaScript is still unresolved unless the corresponding WordPress path exists or is created by the batch.
-4. Use `page.sourceId` for links and parents supplied by the same package. Verify that every referenced source ID exists exactly once and that all planned paths are unique.
-5. Check external destinations intentionally. Use `external` only for a real cross-site link allowed by the current contract; do not use it merely to hide a missing internal route.
-6. Validate the complete ZIP in one request. Do not validate pages individually when they contain parent or link dependencies.
-7. Require zero incompatible pages before import. Warnings are non-blocking, but review them before confirming the import.
-8. Import the exact unchanged file returned by validation together with its `packageHash`. Any package edit requires a new validation request.
+- JSON/schema and semantic validation pass;
+- every gap count is zero;
+- runtime validation reports zero incompatible pages;
+- parent and page-link dependencies resolve;
+- the source tree was not modified during conversion;
+- the exact ZIP and returned `packageHash` are retained unchanged.
 
-The main modal action `/forma-obratnoj-svyaz` follows the same resolution rule. Confirm that this route exists on the target runtime before conversion. The theme's click interception does not by itself satisfy server-side link validation.
+The plugin REST API treats warnings as non-blocking. The repository CLI intentionally applies a stricter safety policy and refuses import while `compatible_with_warnings` is nonzero. Review every warning and regenerate the package after fixing avoidable ones; never patch generated JSON by hand.
 
-Do not overwrite a production artifact to make it pass on localhost. Create a separate environment-specific output directory and ZIP from the same source, then validate that copy against the local runtime. Keep the original Markdown and production package unchanged.
-
-When many pages fail, fix the earliest root issue first. `CANONICAL_MISMATCH` and `UNRESOLVED_LINK` on a parent can cascade into `BATCH_PARENT_INCOMPATIBLE` or `BATCH_LINK_TARGET_INCOMPATIBLE` on otherwise valid descendants.
-
-## Package workflow
-
-Output one PageSpec object, a `{ "pages": [...] }` envelope, or a ZIP containing JSON files. Validate the complete package first. Resolve duplicate source IDs, paths, broken dependencies, unknown assets, and all blocking issues before confirmation. Import is atomic and always creates/updates drafts only.
-
-## Agent prompt
-
-A concise conversion request can be:
-
-> Fetch the current Content Factory Contract Bundle for `potolkinaveka40/potolki-inner`. Convert the supplied Markdown articles to strict PageSpec 1.1. Preserve heading-to-heading section boundaries and source order; do not merge or truncate sections/items. Map specialized content only when its meaning matches catalog, steps, FAQ, CTA, or parent-link, otherwise use article. Put all text after H1 and before the next major heading into hero.lead. Use `/forma-obratnoj-svyaz` for the main modal-form action. Copy target and generatedAgainst from the same Contract Bundle, validate the complete package, and return JSON/ZIP without publishing.
+Conversion and validation are read-only. Draft import and publication require separate explicit actions. The reusable end-to-end prompt is [article-generation-prompt.md](article-generation-prompt.md).
