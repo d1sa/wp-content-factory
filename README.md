@@ -12,7 +12,7 @@ Content Factory validates semantic PageSpec packages and creates reviewable Gute
 
 The Contract Bundle is the only public source for the current schema, profile identity, page types, semantic sections, defaults, assets, and policies. Every PageSpec must use its exact target and `generatedAgainst` values. Packages are atomic: one blocking failure prevents or rolls back the whole batch.
 
-Use [`tools/README.md`](../../../../tools/README.md) for converter and import commands. Do not assemble version fields or packages by hand.
+The dependent converter is colocated in [`tools/`](tools/). Use [`tools/README.md`](tools/README.md) for converter and import commands. Do not assemble version fields or packages by hand.
 
 ## Main REST routes
 
@@ -39,7 +39,7 @@ All routes use the namespace declared by `VersionRegistry::REST_NAMESPACE` and r
 | [Reusable article prompt](docs/article-generation-prompt.md) | Inputs and instructions for new articles or strict conversion |
 | [Adapter development](docs/adapter-development.md) | Profile authoring, mappers, adapter boundaries, and tests |
 | [Integration boundaries](docs/current-state.md) | Compact theme/plugin responsibility map |
-| [Converter CLI](../../../../tools/README.md) | Commands, outputs, offline mode, and confirmed draft import |
+| [Converter CLI](tools/README.md) | Commands, outputs, offline mode, and confirmed draft import |
 
 ## Verification
 

@@ -7,7 +7,7 @@ These rules apply to `wp-content/plugins/content-factory`.
 - Versions and synchronization: [docs/versioning.md](docs/versioning.md).
 - Markdown grammar, conversion, links, assets, and readiness criteria: [docs/content-conversion.md](docs/content-conversion.md).
 - Profile authoring and adapter/runtime boundaries: [docs/adapter-development.md](docs/adapter-development.md).
-- Converter commands and artifacts: [`tools/README.md`](../../../../tools/README.md).
+- Converter commands and artifacts: [`tools/README.md`](tools/README.md).
 - Cross-theme integration boundaries: [docs/current-state.md](docs/current-state.md).
 
 Do not restate these rules in another document. Update the owning document and verify its incoming links.

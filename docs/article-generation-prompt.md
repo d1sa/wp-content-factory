@@ -29,10 +29,10 @@ If a required value cannot be derived safely from these inputs, the repository, 
    - `wordpress/wp-content/plugins/content-factory/AGENTS.md`
    - `wordpress/wp-content/plugins/content-factory/docs/versioning.md`
    - `wordpress/wp-content/plugins/content-factory/docs/content-conversion.md`
-   - `tools/README.md`
+   - `wordpress/wp-content/plugins/content-factory/tools/README.md`
 2. Run the version checker required by `versioning.md`. Stop on drift.
 3. Follow `content-conversion.md` as the normative source for Markdown syntax, hierarchy, content exclusions, links, assets, gaps, and readiness.
-4. Follow `tools/README.md` for converter commands and artifacts. Let the repository converter obtain a fresh Contract Bundle from the exact target runtime. Do not type, infer, or copy protocol versions, profile versions, hashes, REST namespaces, schemas, page types, defaults, assets, or policies.
+4. Follow `wordpress/wp-content/plugins/content-factory/tools/README.md` for converter commands and artifacts. Let the repository converter obtain a fresh Contract Bundle from the exact target runtime. Do not type, infer, or copy protocol versions, profile versions, hashes, REST namespaces, schemas, page types, defaults, assets, or policies.
 5. Work only in a complete copy at `<MARKDOWN_WORKTREE_DIR>`. Keep `<SOURCE_MARKDOWN_DIR>` unchanged. Do not replace an existing working or output directory unless replacement of that exact path was explicitly requested.
 
 ## Mode-specific behavior

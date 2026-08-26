@@ -35,7 +35,7 @@ Do not copy versions from README files, examples, snapshots, prior generated JSO
 
 ## Required check
 
-Run from the project root:
+Run from the Content Factory plugin root:
 
 ```sh
 python3 tools/check_content_factory_versions.py

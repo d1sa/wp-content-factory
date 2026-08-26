@@ -1,6 +1,6 @@
 # Markdown conversion
 
-This document owns the Markdown dialect and the readiness rules for repository-generated PageSpec packages. CLI syntax and artifact descriptions live in [`tools/README.md`](../../../../../tools/README.md); version rules live in [versioning.md](versioning.md).
+This document owns the Markdown dialect and the readiness rules for repository-generated PageSpec packages. CLI syntax and artifact descriptions live in [`tools/README.md`](../tools/README.md); version rules live in [versioning.md](versioning.md).
 
 ## Contract setup
 
@@ -108,7 +108,11 @@ The converter creates no `parent-link` semantic section. When `post.parent` exis
 
 For existing articles, preserve all ready public wording and its order. Do not shorten, summarize, rewrite, merge sections, or truncate paragraphs, lists, cards, steps, or FAQ items. Normal Markdown line wrapping may be normalized during parsing.
 
-The service area before the public marker is not publishable. Recognized SEO assignments, technical instructions, content-manager comments, and standalone Markdown export links are excluded. Export links are still checked as source dependencies. A technical note inside public content is excluded only when it uses a heading recognized by the converter; inspect `excludedServiceContent` in the report.
+The service area before the public marker is not publishable. Recognized SEO assignments and standalone Markdown export links are excluded; export links are still checked as source dependencies.
+
+Inside public content, exclusion is deliberately narrow. Only the exact top-level headings `МИНИМАЛЬНАЯ ПЕРЕЛИНКОВКА`, `ПЕРЕЛИНКОВКА НА РОДИТЕЛЬСКОЙ СТРАНИЦЕ`, `ДОПОЛНИТЕЛЬНАЯ ПЕРЕЛИНКОВКА В КОНЦЕ СТРАНИЦЫ`, `СВЯЗАННЫЕ РАЗДЕЛЫ`, `ВАЖНО ДЛЯ SEO`, `ВАЖНО ПО СКРЫТОЙ НИШЕ`, and `ВАЖНО: НЕ СОЗДАЁМ SEO-ДУБЛИ` are service sections. The exact level-two headings `ТЕХНИЧЕСКОЕ ЗАДАНИЕ`, `ТЕХНИЧЕСКОЕ ЗАДАНИЕ НА БЛОК`, `ВАЖНО ДЛЯ КОНТЕНТ-МЕНЕДЖЕРА`, and `ВАЖНО ДЛЯ SEO` are service subsections. Other headings beginning with words such as `ВАЖНО` or `КОММЕНТАР` remain public. Inspect every explicit exclusion in `excludedServiceContent`.
+
+A CTA with `Форма` is converted to the plugin's `form` variant and cannot carry action URLs. The `links` variant requires two actions with resolvable links. A single linked action, a URL on a form action, or a third action is retained in a blocking gap instead of being silently discarded.
 
 Do not invent facts, prices, guarantees, contacts, URLs, assets, or missing content. Record unresolved requirements as `CONTENT_GAP`, `LINK_GAP`, `ASSET_GAP`, or `ADAPTER_GAP`.
 

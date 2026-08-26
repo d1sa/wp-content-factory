@@ -14,4 +14,4 @@ This page is the compact handoff between the theme and Content Factory. Detailed
 
 Read-only validation checks the complete dependency graph. Import creates or updates managed drafts atomically and cannot overwrite published managed pages. Publication is a separate, confirmed action after revalidation.
 
-For Markdown grammar and package readiness, use [content-conversion.md](content-conversion.md). For commands and artifacts, use [`tools/README.md`](../../../../../tools/README.md).
+For Markdown grammar and package readiness, use [content-conversion.md](content-conversion.md). For commands and artifacts, use [`tools/README.md`](../tools/README.md).
