@@ -8,7 +8,7 @@ Content Factory validates semantic PageSpec packages and creates reviewable Gute
 2. Convert the complete Markdown tree with the repository converter.
 3. Review its report and read-only validation result.
 4. Import the exact validated ZIP only after explicit confirmation.
-5. Review drafts; publish through the separate guarded workflow.
+5. Review drafts; publish them through WordPress or use Content Factory's separate confirmed bulk action.
 
 The Contract Bundle is the only public source for the current schema, profile identity, page types, semantic sections, defaults, assets, and policies. Every PageSpec must use its exact target and `generatedAgainst` values. Packages are atomic: one blocking failure prevents or rolls back the whole batch.
 
@@ -25,10 +25,10 @@ All routes use the namespace declared by `VersionRegistry::REST_NAMESPACE` and r
 | POST | `/pages/batch` | Atomic creation/update of a confirmed draft package |
 | GET | `/pages` and `/pages/{sourceId}` | Managed-page status and details |
 | POST | `/pages/{sourceId}/revalidate` | Revalidate stored source and output |
-| POST | `/pages/publish-selected` | Guarded publication after confirmation |
+| POST | `/pages/publish-selected` | Checked bulk publication after confirmation |
 | GET | `/operations` | Operation audit log |
 
-`/contract` replaces separate public manifest and schema endpoints. Published WordPress pages remain ordinary Gutenberg content.
+`/contract` replaces separate public manifest and schema endpoints. Imported drafts and published pages remain ordinary WordPress content: administrators may edit and change their status without Content Factory intercepting the save. Manual changes mark the stored validation state as stale; they never change the page status.
 
 ## Documentation map
 

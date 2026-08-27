@@ -27,7 +27,7 @@ Do not restate these rules in another document. Update the owning document and v
 - Give every semantic field an executable consumer or an explicit classification.
 - Validate Registry block names, attributes and types, `parent`, `allowedBlocks`, theme assets, page template, links, and Gutenberg round-trip.
 - Validate a complete package before any write. Batch import is atomic.
-- Import creates or updates managed drafts only. Publication remains a separate guarded action.
+- Import creates or updates managed drafts only. After import, WordPress and its administrators own page status and editing; native publication must not be intercepted. Content Factory may additionally provide a confirmed bulk-publish action.
 - Do not rewrite unrelated user content or existing published pages during contract work.
 - Treat `generatedAgainst` drift as diagnostic for stored drafts; always validate them against the full current contract.
 

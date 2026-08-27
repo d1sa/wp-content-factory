@@ -1424,11 +1424,19 @@ $runner->test(
 			cf_assert_same( 'update_draft', $drafts->plan( $profile_drift->normalized_spec(), $profile_drift->report()->context(), $profile_drift->profile() )['action'] ?? '', 'Planner action for profile metadata drift' );
 			update_post_meta( $post_id, '_content_factory_site_defaults_version', $adapter->compiled_profile()->defaults_version() );
 
-			$guard = new ContentFactory\WordPress\PublishGuard();
-			$blocked_data = $guard->guard_publish( array( 'post_status' => 'publish' ), array( 'ID' => $post_id ) );
-			cf_assert_same( 'draft', $blocked_data['post_status'], 'Managed native publish guard' );
-			$regular_data = $guard->guard_publish( array( 'post_status' => 'publish' ), array( 'ID' => 0 ) );
-			cf_assert_same( 'publish', $regular_data['post_status'], 'Unmanaged publish remains untouched' );
+			$native_published = wp_update_post( array( 'ID' => $post_id, 'post_status' => 'publish' ), true );
+			cf_assert( ! is_wp_error( $native_published ), 'WordPress could not publish a managed draft natively.' );
+			cf_assert_same( 'publish', get_post_status( $post_id ), 'Managed native publication remains unrestricted' );
+			cf_assert_same( 'stale', get_post_meta( $post_id, '_content_factory_validation_status', true ), 'Native publication invalidates the stored validation state' );
+			try {
+				ContentFactory\WordPress\DraftManager::set_internal_save( true );
+				$restored_draft = wp_update_post( array( 'ID' => $post_id, 'post_status' => 'draft' ), true );
+			} finally {
+				ContentFactory\WordPress\DraftManager::set_internal_save( false );
+			}
+			cf_assert( ! is_wp_error( $restored_draft ), 'Test fixture could not be restored to draft.' );
+			cf_assert_same( 'draft', get_post_status( $post_id ), 'Test fixture restored draft status' );
+			update_post_meta( $post_id, '_content_factory_validation_status', 'valid' );
 
 			update_post_meta( $post_id, '_yoast_wpseo_title', 'tampered SEO' );
 			$drift_report = $pipeline->process( $spec );
@@ -1494,6 +1502,10 @@ $runner->test(
 			$published = $publisher->publish_selected( array( $source_id ), true );
 			cf_assert( is_array( $published ) && 'published' === ( $published[0]['status'] ?? '' ), 'Publish Manager did not publish the valid draft.' );
 			cf_assert_same( 'publish', get_post_status( $post_id ), 'Published post status' );
+			$ordinary_update = wp_update_post( array( 'ID' => $post_id, 'menu_order' => 1 ), true );
+			cf_assert( ! is_wp_error( $ordinary_update ), 'Ordinary WordPress update of a published managed page failed.' );
+			cf_assert_same( 'publish', get_post_status( $post_id ), 'Ordinary WordPress update must not demote a published managed page' );
+			cf_assert_same( 'stale', get_post_meta( $post_id, '_content_factory_validation_status', true ), 'Ordinary WordPress update invalidates the stored validation state' );
 			cf_assert_same( 'blocked_published', $drafts->plan( $created['report']->context()['normalizedSpec'] ?? $spec, $created['report']->context() )['action'] ?? '', 'Planner action for a published managed page' );
 			$conflict = $drafts->import( $spec );
 			cf_assert( is_wp_error( $conflict ) && 'published_conflict' === $conflict->get_error_code(), 'Published managed page was not protected from reimport.' );

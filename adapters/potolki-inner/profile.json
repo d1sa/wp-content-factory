@@ -1,6 +1,6 @@
 {
   "profileSchemaVersion": "1.0",
-  "identity": {"profileId": "potolki-inner", "profileVersion": "2.2.1", "siteKey": "potolkinaveka40"},
+  "identity": {"profileId": "potolki-inner", "profileVersion": "2.4.0", "siteKey": "potolkinaveka40"},
   "compatibility": {"theme": {"stylesheet": ["potolki-wp"], "minVersion": "1.0.0"}},
   "postDefaults": {"postType": "page", "pageTemplate": "template-full-width.php", "status": "draft"},
   "pageTypes": {

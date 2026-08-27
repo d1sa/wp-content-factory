@@ -12,6 +12,6 @@ This page is the compact handoff between the theme and Content Factory. Detailed
 
 ## Write boundary
 
-Read-only validation checks the complete dependency graph. Import creates or updates managed drafts atomically and cannot overwrite published managed pages. Publication is a separate, confirmed action after revalidation.
+Read-only validation checks the complete dependency graph. Import creates or updates managed drafts atomically and cannot overwrite published managed pages. Once imported, a page's content and status are controlled by WordPress and its administrators; Content Factory does not intercept native publication or later saves. Its confirmed bulk-publish action remains available as an optional checked workflow for newly imported drafts. Manual WordPress changes only make the stored Content Factory validation state stale.
 
 For Markdown grammar and package readiness, use [content-conversion.md](content-conversion.md). For commands and artifacts, use [`tools/README.md`](../tools/README.md).

@@ -16,7 +16,7 @@ use ContentFactory\Service\ContentPipeline;
 use ContentFactory\Validation\CorePageSpecValidator;
 use ContentFactory\WordPress\DraftManager;
 use ContentFactory\WordPress\HashManager;
-use ContentFactory\WordPress\PublishGuard;
+use ContentFactory\WordPress\ManagedPageObserver;
 use ContentFactory\WordPress\PublishManager;
 use ContentFactory\WordPress\YoastAdapter;
 
@@ -38,7 +38,6 @@ final class Plugin {
 	public static function activate(): void {
 		OperationLogger::install();
 		self::ensure_administrator_capabilities();
-		add_option( 'content_factory_publish_policy', 'manager_only', '', false );
 		if ( ! wp_next_scheduled( 'content_factory_cleanup_logs' ) ) {
 			wp_schedule_event( time() + DAY_IN_SECONDS, 'daily', 'content_factory_cleanup_logs' );
 		}
@@ -82,7 +81,7 @@ final class Plugin {
 		$rest = new RestController( $adapters, $pipeline, $drafts, $batch, $publisher, new JsonImporter(), new ZipImporter(), $logger );
 
 		add_action( 'rest_api_init', array( $rest, 'register' ) );
-		( new PublishGuard() )->register();
+		( new ManagedPageObserver() )->register();
 		add_action( 'content_factory_cleanup_logs', static fn() => $logger->cleanup() );
 
 		if ( is_admin() && class_exists( AdminPage::class ) ) {

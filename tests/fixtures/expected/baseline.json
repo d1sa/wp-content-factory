@@ -1,14 +1,14 @@
 {
     "profileId": "potolki-inner",
-    "profileVersion": "2.2.1",
-    "manifestHash": "sha256:86272c868d325fb630137b44d686b4da0230e3b6ed0a0da3415bdf74b5ede63a",
+    "profileVersion": "2.4.0",
+    "manifestHash": "sha256:3fcb6f85f326216fae6f9923575ddc6b9776d3b44e558e631b55a8af017cbb62",
     "selfCheck": {
         "status": "compatible",
         "issues": [],
         "profileId": "potolki-inner",
-        "profileVersion": "2.2.1",
+        "profileVersion": "2.4.0",
         "siteDefaultsVersion": "1.1.1",
-        "manifestHash": "sha256:86272c868d325fb630137b44d686b4da0230e3b6ed0a0da3415bdf74b5ede63a"
+        "manifestHash": "sha256:3fcb6f85f326216fae6f9923575ddc6b9776d3b44e558e631b55a8af017cbb62"
     },
     "fixtures": {
         "service-detail": {
@@ -20,7 +20,7 @@
                     "path": "/generatedAgainst/profileVersion",
                     "sourceId": "042-matovye-potolki",
                     "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
-                    "expected": "2.2.1",
+                    "expected": "2.4.0",
                     "suggestion": "",
                     "docsRef": ""
                 },
@@ -30,7 +30,7 @@
                     "path": "/generatedAgainst/manifestHash",
                     "sourceId": "042-matovye-potolki",
                     "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
-                    "expected": "sha256:86272c868d325fb630137b44d686b4da0230e3b6ed0a0da3415bdf74b5ede63a",
+                    "expected": "sha256:3fcb6f85f326216fae6f9923575ddc6b9776d3b44e558e631b55a8af017cbb62",
                     "suggestion": "",
                     "docsRef": ""
                 }
@@ -46,7 +46,7 @@
                     "path": "/generatedAgainst/profileVersion",
                     "sourceId": "001-vidy-potolkov",
                     "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
-                    "expected": "2.2.1",
+                    "expected": "2.4.0",
                     "suggestion": "",
                     "docsRef": ""
                 },
@@ -56,7 +56,7 @@
                     "path": "/generatedAgainst/manifestHash",
                     "sourceId": "001-vidy-potolkov",
                     "message": "Снимок generatedAgainst отличается от текущего профиля; фактический контракт проверен повторно.",
-                    "expected": "sha256:86272c868d325fb630137b44d686b4da0230e3b6ed0a0da3415bdf74b5ede63a",
+                    "expected": "sha256:3fcb6f85f326216fae6f9923575ddc6b9776d3b44e558e631b55a8af017cbb62",
                     "suggestion": "",
                     "docsRef": ""
                 }

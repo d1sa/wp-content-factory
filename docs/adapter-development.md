@@ -63,7 +63,7 @@ Keep current content defaults and declared asset fallbacks separate from compati
 - golden Block Tree and post-content snapshots pass;
 - regression corpus hashes pass;
 - batch validation and runtime failure leave no partial writes;
-- draft idempotency, rollback, revalidation, and publish guard pass.
+- draft idempotency, rollback, revalidation, unrestricted native publication, and confirmed bulk publication pass.
 
 Run:
 
